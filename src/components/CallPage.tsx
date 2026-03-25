@@ -21,6 +21,8 @@ export default function CallPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const isInitiatorRef = useRef(false);
+  const disconnectTimerRef = useRef<number | null>(null);
+  const restartAttemptsRef = useRef(0);
 
   const [status, setStatus] = useState<CallStatus>("Preparing your camera...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export default function CallPage() {
       }
       case "offer": {
         setStatus("Connecting call...");
+        setErrorMessage(null);
         await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
         await flushQueuedCandidates();
 
@@ -120,6 +123,7 @@ export default function CallPage() {
         break;
       }
       case "answer": {
+        setErrorMessage(null);
         await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
         await flushQueuedCandidates();
         break;
@@ -133,6 +137,8 @@ export default function CallPage() {
         break;
       }
       case "peer-left": {
+        clearDisconnectTimer();
+        restartAttemptsRef.current = 0;
         setStatus("Waiting for Mom to join");
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null;
@@ -172,15 +178,20 @@ export default function CallPage() {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
+        clearDisconnectTimer();
+        restartAttemptsRef.current = 0;
+        setErrorMessage(null);
         setStatus("Call connected");
       }
-      if (
-        pc.connectionState === "failed" ||
-        pc.connectionState === "disconnected"
-      ) {
-        setErrorMessage("Connection lost. Please refresh and try again.");
+      if (pc.connectionState === "disconnected") {
+        setStatus("Connecting call...");
+        scheduleDisconnectRecovery(room);
+      }
+      if (pc.connectionState === "failed") {
+        void attemptReconnect(room);
       }
       if (pc.connectionState === "closed") {
+        clearDisconnectTimer();
         setStatus("Call ended");
       }
     };
@@ -202,6 +213,58 @@ export default function CallPage() {
     });
   }
 
+  function clearDisconnectTimer() {
+    if (disconnectTimerRef.current !== null) {
+      window.clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+  }
+
+  function scheduleDisconnectRecovery(room: string) {
+    clearDisconnectTimer();
+
+    disconnectTimerRef.current = window.setTimeout(() => {
+      void attemptReconnect(room);
+    }, 8000);
+  }
+
+  async function attemptReconnect(room: string) {
+    clearDisconnectTimer();
+
+    const pc = pcRef.current;
+    if (!pc || pc.signalingState === "closed") return;
+
+    if (!isInitiatorRef.current) {
+      setErrorMessage("Connection is unstable. Waiting for call recovery...");
+      return;
+    }
+
+    if (restartAttemptsRef.current >= 2) {
+      setErrorMessage(
+        "Connection lost. Your network may block direct calls. Please refresh and try again.",
+      );
+      return;
+    }
+
+    restartAttemptsRef.current += 1;
+    setStatus("Connecting call...");
+
+    try {
+      const restartOffer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(restartOffer);
+
+      sendSignal(socketRef.current, {
+        type: "offer",
+        roomId: room,
+        sdp: restartOffer,
+      });
+    } catch {
+      setErrorMessage(
+        "Connection lost. Your network may block direct calls. Please refresh and try again.",
+      );
+    }
+  }
+
   async function flushQueuedCandidates() {
     const pc = pcRef.current;
     if (!pc || !pc.remoteDescription) return;
@@ -220,6 +283,9 @@ export default function CallPage() {
       existing.close();
     }
 
+    clearDisconnectTimer();
+    restartAttemptsRef.current = 0;
+
     const fresh = createPeerConnection(room);
     pcRef.current = fresh;
 
@@ -234,6 +300,8 @@ export default function CallPage() {
   }
 
   function leaveCall(room: string) {
+    clearDisconnectTimer();
+
     sendSignal(socketRef.current, { type: "leave", roomId: room });
     socketRef.current?.close();
     socketRef.current = null;

@@ -3,6 +3,12 @@ import type {
   ServerSignalMessage,
 } from "../types/signaling";
 
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:global.stun.twilio.com:3478?transport=udp" },
+];
+
 export function createSignalingSocket(
   onMessage: (message: ServerSignalMessage) => void,
 ): WebSocket {
@@ -11,7 +17,7 @@ export function createSignalingSocket(
     window.location.hostname === "127.0.0.1";
   const defaultWsUrl = isLocalhost
     ? "ws://localhost:8080/ws"
-    : "wss://justcall-amd64.onrender.com/ws";
+    : "wss://justcall-singapore.onrender.com/ws";
   const wsUrl = import.meta.env.VITE_SIGNALING_WS_URL ?? defaultWsUrl;
   const socket = new WebSocket(wsUrl);
 
@@ -37,17 +43,33 @@ export function sendSignal(
 
 export function parseIceServers(): RTCIceServer[] {
   const configured = import.meta.env.VITE_ICE_SERVERS;
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+
+  const configuredTurnServer =
+    turnUrl && turnUsername && turnCredential
+      ? [
+          {
+            urls: turnUrl,
+            username: turnUsername,
+            credential: turnCredential,
+          } as RTCIceServer,
+        ]
+      : [];
 
   if (!configured) {
-    return [{ urls: "stun:stun.l.google.com:19302" }];
+    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
   }
 
   try {
     const parsed = JSON.parse(configured) as RTCIceServer[];
-    return Array.isArray(parsed) && parsed.length > 0
-      ? parsed
-      : [{ urls: "stun:stun.l.google.com:19302" }];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return [...parsed, ...configuredTurnServer];
+    }
+
+    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
   } catch {
-    return [{ urls: "stun:stun.l.google.com:19302" }];
+    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
   }
 }
