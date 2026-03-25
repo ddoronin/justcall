@@ -40,6 +40,34 @@ export default function CallPage() {
     let isMounted = true;
 
     const setup = async () => {
+      const pc = createPeerConnection(validRoomId);
+      pcRef.current = pc;
+
+      const socket = createSignalingSocket((message) => {
+        void onServerMessage(message, validRoomId);
+      });
+
+      socketRef.current = socket;
+
+      socket.addEventListener("open", () => {
+        setErrorMessage(null);
+        setStatus("Waiting for Mom to join");
+        sendSignal(socket, { type: "join-room", roomId: validRoomId });
+      });
+
+      socket.addEventListener("error", () => {
+        if (!isMounted) return;
+        setErrorMessage(
+          "Could not reach the call server. Please refresh and try again.",
+        );
+      });
+
+      socket.addEventListener("close", () => {
+        if (isMounted) {
+          setStatus("Call ended");
+        }
+      });
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -52,30 +80,22 @@ export default function CallPage() {
           localVideoRef.current.srcObject = stream;
         }
 
-        const pc = createPeerConnection(validRoomId);
-        pcRef.current = pc;
-
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      } catch (error) {
+        if (!isMounted) return;
 
-        const socket = createSignalingSocket((message) => {
-          void onServerMessage(message, validRoomId);
-        });
-
-        socketRef.current = socket;
-
-        socket.addEventListener("open", () => {
-          setErrorMessage(null);
-          setStatus("Waiting for Mom to join");
-          sendSignal(socket, { type: "join-room", roomId: validRoomId });
-        });
-
-        socket.addEventListener("close", () => {
-          if (isMounted && status !== "Call ended") {
-            setStatus("Call ended");
-          }
-        });
-      } catch {
-        setErrorMessage("Please allow camera and microphone to join the call.");
+        const mediaError = error as DOMException;
+        if (mediaError?.name === "NotAllowedError") {
+          setErrorMessage(
+            "Camera/microphone permission was denied. Allow access and refresh.",
+          );
+        } else if (mediaError?.name === "NotFoundError") {
+          setErrorMessage("No camera or microphone found on this device.");
+        } else {
+          setErrorMessage(
+            "Could not start camera/microphone. You can still wait for the other person to join.",
+          );
+        }
       }
     };
 
