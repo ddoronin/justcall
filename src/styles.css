@@ -1,0 +1,143 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #f7f7f8;
+  background: #0f1115;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0f1115;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.home-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.card {
+  width: min(440px, 100%);
+  background: #171a21;
+  border: 1px solid #2c3240;
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 32px;
+}
+
+p {
+  margin: 0;
+}
+
+.primary,
+.danger,
+.controls button {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.primary {
+  margin-top: 18px;
+  width: 100%;
+  background: #4f7cff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.call-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+
+.video-shell {
+  position: relative;
+  background: #000;
+}
+
+.remote-video {
+  width: 100%;
+  height: calc(100vh - 150px);
+  object-fit: cover;
+  background: #111;
+}
+
+.local-video {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 220px;
+  aspect-ratio: 16/9;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #1a1a1a;
+  border: 2px solid #ffffff2e;
+}
+
+.controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid #2c3240;
+  background: #12151b;
+}
+
+.status {
+  color: #dce3ff;
+}
+
+.error {
+  color: #ff8b8b;
+}
+
+.invite-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.invite-row input {
+  border: 1px solid #2e3443;
+  border-radius: 10px;
+  background: #0e1117;
+  color: #d7ddf3;
+  padding: 10px;
+}
+
+.controls button {
+  background: #2c3445;
+  color: #f0f3ff;
+}
+
+.danger {
+  background: #b53030;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+  .remote-video {
+    height: calc(100vh - 190px);
+  }
+
+  .local-video {
+    width: 140px;
+    right: 10px;
+    bottom: 10px;
+  }
+}
