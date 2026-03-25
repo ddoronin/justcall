@@ -12,12 +12,7 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 export function createSignalingSocket(
   onMessage: (message: ServerSignalMessage) => void,
 ): WebSocket {
-  const isLocalhost =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1";
-  const defaultWsUrl = isLocalhost
-    ? "ws://localhost:8080/ws"
-    : "wss://justcall-singapore.onrender.com/ws";
+  const defaultWsUrl = "wss://justcall-singapore.onrender.com/ws";
   const wsUrl = import.meta.env.VITE_SIGNALING_WS_URL ?? defaultWsUrl;
   const socket = new WebSocket(wsUrl);
 
@@ -58,18 +53,45 @@ export function parseIceServers(): RTCIceServer[] {
         ]
       : [];
 
+  const sanitizeIceServers = (servers: RTCIceServer[]): RTCIceServer[] => {
+    return servers.filter((server) => {
+      if (!server || !server.urls) return false;
+
+      if (typeof server.urls === "string") {
+        return server.urls.trim().length > 0;
+      }
+
+      if (Array.isArray(server.urls)) {
+        return server.urls.some(
+          (url) => typeof url === "string" && url.trim().length > 0,
+        );
+      }
+
+      return false;
+    });
+  };
+
   if (!configured) {
-    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
+    return sanitizeIceServers([
+      ...DEFAULT_ICE_SERVERS,
+      ...configuredTurnServer,
+    ]);
   }
 
   try {
     const parsed = JSON.parse(configured) as RTCIceServer[];
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return [...parsed, ...configuredTurnServer];
+      return sanitizeIceServers([...parsed, ...configuredTurnServer]);
     }
 
-    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
+    return sanitizeIceServers([
+      ...DEFAULT_ICE_SERVERS,
+      ...configuredTurnServer,
+    ]);
   } catch {
-    return [...DEFAULT_ICE_SERVERS, ...configuredTurnServer];
+    return sanitizeIceServers([
+      ...DEFAULT_ICE_SERVERS,
+      ...configuredTurnServer,
+    ]);
   }
 }

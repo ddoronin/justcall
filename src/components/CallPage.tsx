@@ -27,9 +27,74 @@ export default function CallPage() {
   const [status, setStatus] = useState<CallStatus>("Preparing your camera...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isInitiator, setIsInitiator] = useState(false);
+  const [canRetryMedia, setCanRetryMedia] = useState(false);
 
   const inviteLink = useMemo(() => window.location.href, []);
   const validRoomId = roomId ?? "";
+
+  async function attachLocalMedia() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new DOMException(
+        "This browser does not support camera access",
+        "NotSupportedError",
+      );
+    }
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+    } catch {
+      return await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+    }
+  }
+
+  function getMediaErrorMessage(error: unknown): string {
+    const mediaError = error as DOMException;
+
+    if (mediaError?.name === "NotAllowedError") {
+      return "Camera/microphone permission was denied. Click Enable Camera below after allowing access in browser settings.";
+    }
+    if (mediaError?.name === "NotFoundError") {
+      return "No camera was found on this device.";
+    }
+    if (mediaError?.name === "NotReadableError") {
+      return "Camera is busy in another app. Close other apps using camera and try again.";
+    }
+    if (mediaError?.name === "SecurityError") {
+      return "Camera is blocked by browser security settings.";
+    }
+
+    return "Could not start camera/microphone. Click Enable Camera to try again.";
+  }
+
+  async function startLocalMedia() {
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    try {
+      const stream = await attachLocalMedia();
+      localStreamRef.current = stream;
+      setCanRetryMedia(false);
+      setErrorMessage(null);
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        void localVideoRef.current.play().catch(() => {
+          // ignore autoplay promise rejections
+        });
+      }
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    } catch (error) {
+      setCanRetryMedia(true);
+      setErrorMessage(getMediaErrorMessage(error));
+    }
+  }
 
   useEffect(() => {
     if (!validRoomId) {
@@ -38,64 +103,45 @@ export default function CallPage() {
     }
 
     let isMounted = true;
+    setStatus("Joining call...");
 
     const setup = async () => {
-      const pc = createPeerConnection(validRoomId);
-      pcRef.current = pc;
-
-      const socket = createSignalingSocket((message) => {
-        void onServerMessage(message, validRoomId);
-      });
-
-      socketRef.current = socket;
-
-      socket.addEventListener("open", () => {
-        setErrorMessage(null);
-        setStatus("Waiting for Mom to join");
-        sendSignal(socket, { type: "join-room", roomId: validRoomId });
-      });
-
-      socket.addEventListener("error", () => {
-        if (!isMounted) return;
-        setErrorMessage(
-          "Could not reach the call server. Please refresh and try again.",
-        );
-      });
-
-      socket.addEventListener("close", () => {
-        if (isMounted) {
-          setStatus("Call ended");
-        }
-      });
-
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
+        const pc = createPeerConnection(validRoomId);
+        pcRef.current = pc;
+
+        const socket = createSignalingSocket((message) => {
+          void onServerMessage(message, validRoomId);
         });
+
+        socketRef.current = socket;
+
+        socket.addEventListener("open", () => {
+          setErrorMessage(null);
+          setStatus("Waiting for Mom to join");
+          sendSignal(socket, { type: "join-room", roomId: validRoomId });
+        });
+
+        socket.addEventListener("error", () => {
+          if (!isMounted) return;
+          setStatus("Call ended");
+          setErrorMessage(
+            "Could not reach the call server. Please refresh and try again.",
+          );
+        });
+
+        socket.addEventListener("close", () => {
+          if (isMounted) {
+            setStatus("Call ended");
+          }
+        });
+
         if (!isMounted) return;
-
-        localStreamRef.current = stream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        await startLocalMedia();
       } catch (error) {
         if (!isMounted) return;
 
-        const mediaError = error as DOMException;
-        if (mediaError?.name === "NotAllowedError") {
-          setErrorMessage(
-            "Camera/microphone permission was denied. Allow access and refresh.",
-          );
-        } else if (mediaError?.name === "NotFoundError") {
-          setErrorMessage("No camera or microphone found on this device.");
-        } else {
-          setErrorMessage(
-            "Could not start camera/microphone. You can still wait for the other person to join.",
-          );
-        }
+        setErrorMessage(DEFAULT_ERROR);
       }
     };
 
@@ -178,7 +224,18 @@ export default function CallPage() {
   }
 
   function createPeerConnection(room: string): RTCPeerConnection {
-    const pc = new RTCPeerConnection({ iceServers: parseIceServers() });
+    let pc: RTCPeerConnection;
+
+    try {
+      pc = new RTCPeerConnection({ iceServers: parseIceServers() });
+    } catch {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      setErrorMessage(
+        "Using fallback network settings. If calls fail, check ICE/TURN env values.",
+      );
+    }
 
     pc.ontrack = (event) => {
       const [stream] = event.streams;
@@ -364,6 +421,10 @@ export default function CallPage() {
           <input value={inviteLink} readOnly />
           <button onClick={copyInviteLink}>Copy Link</button>
         </div>
+
+        {canRetryMedia ? (
+          <button onClick={() => void startLocalMedia()}>Enable Camera</button>
+        ) : null}
 
         <button className="danger" onClick={endCall}>
           End Call
