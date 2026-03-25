@@ -3,11 +3,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   createSignalingSocket,
   parseIceServers,
+  resolveIceServers,
   sendSignal,
 } from "../lib/signaling";
 import type { CallStatus, ServerSignalMessage } from "../types/signaling";
 
 const DEFAULT_ERROR = "Something went wrong. Please refresh and try again.";
+
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
 
 export default function CallPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -18,7 +24,9 @@ export default function CallPage() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const resolvedIceServersRef = useRef<RTCIceServer[]>(parseIceServers());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const mediaStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const isInitiatorRef = useRef(false);
   const disconnectTimerRef = useRef<number | null>(null);
@@ -72,9 +80,27 @@ export default function CallPage() {
     return "Could not start camera/microphone. Click Enable Camera to try again.";
   }
 
-  async function startLocalMedia() {
+  function addLocalTracksToPeerConnection(
+    pc: RTCPeerConnection,
+    stream: MediaStream,
+  ) {
+    const existingTrackIds = new Set(
+      pc
+        .getSenders()
+        .map((sender) => sender.track?.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    stream.getTracks().forEach((track) => {
+      if (!existingTrackIds.has(track.id)) {
+        pc.addTrack(track, stream);
+      }
+    });
+  }
+
+  async function startLocalMedia(): Promise<boolean> {
     const pc = pcRef.current;
-    if (!pc) return;
+    if (!pc) return false;
 
     try {
       const stream = await attachLocalMedia();
@@ -89,11 +115,25 @@ export default function CallPage() {
         });
       }
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      addLocalTracksToPeerConnection(pc, stream);
+      return true;
     } catch (error) {
       setCanRetryMedia(true);
       setErrorMessage(getMediaErrorMessage(error));
+      return false;
     }
+  }
+
+  async function ensureLocalMediaStarted(): Promise<boolean> {
+    if (localStreamRef.current) return true;
+
+    if (!mediaStartPromiseRef.current) {
+      mediaStartPromiseRef.current = startLocalMedia().finally(() => {
+        mediaStartPromiseRef.current = null;
+      });
+    }
+
+    return mediaStartPromiseRef.current;
   }
 
   useEffect(() => {
@@ -107,7 +147,10 @@ export default function CallPage() {
 
     const setup = async () => {
       try {
-        const pc = createPeerConnection(validRoomId);
+        const iceServers = await resolveIceServers();
+        resolvedIceServersRef.current = iceServers;
+
+        const pc = createPeerConnection(validRoomId, iceServers);
         pcRef.current = pc;
 
         const socket = createSignalingSocket((message) => {
@@ -137,7 +180,7 @@ export default function CallPage() {
         });
 
         if (!isMounted) return;
-        await startLocalMedia();
+        await ensureLocalMediaStarted();
       } catch (error) {
         if (!isMounted) return;
 
@@ -169,12 +212,16 @@ export default function CallPage() {
       case "peer-joined": {
         if (!isInitiatorRef.current) break;
         setStatus("Connecting call...");
+        await ensureLocalMediaStarted();
         await createAndSendOffer(room);
         break;
       }
       case "offer": {
         setStatus("Connecting call...");
         setErrorMessage(null);
+
+        await ensureLocalMediaStarted();
+
         await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
         await flushQueuedCandidates();
 
@@ -223,11 +270,19 @@ export default function CallPage() {
     }
   }
 
-  function createPeerConnection(room: string): RTCPeerConnection {
+  function createPeerConnection(
+    room: string,
+    iceServers: RTCIceServer[],
+  ): RTCPeerConnection {
     let pc: RTCPeerConnection;
 
     try {
-      pc = new RTCPeerConnection({ iceServers: parseIceServers() });
+      pc = new RTCPeerConnection({
+        iceServers,
+        ...(isTruthyEnvFlag(import.meta.env.VITE_FORCE_RELAY)
+          ? { iceTransportPolicy: "relay" as RTCIceTransportPolicy }
+          : {}),
+      });
     } catch {
       pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -363,12 +418,12 @@ export default function CallPage() {
     clearDisconnectTimer();
     restartAttemptsRef.current = 0;
 
-    const fresh = createPeerConnection(room);
+    const fresh = createPeerConnection(room, resolvedIceServersRef.current);
     pcRef.current = fresh;
 
     const stream = localStreamRef.current;
     if (stream) {
-      stream.getTracks().forEach((track) => fresh.addTrack(track, stream));
+      addLocalTracksToPeerConnection(fresh, stream);
     }
   }
 
