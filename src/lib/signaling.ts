@@ -2,6 +2,7 @@ import type {
   ClientSignalMessage,
   ServerSignalMessage,
 } from "../types/signaling";
+import { isServerSignalMessage } from "../types/signaling";
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -47,8 +48,10 @@ export function createSignalingSocket(
 
   socket.addEventListener("message", (event) => {
     try {
-      const parsed = JSON.parse(String(event.data)) as ServerSignalMessage;
-      onMessage(parsed);
+      const parsed = JSON.parse(String(event.data)) as unknown;
+      if (isServerSignalMessage(parsed)) {
+        onMessage(parsed);
+      }
     } catch {
       // ignore malformed payloads
     }

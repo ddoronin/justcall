@@ -6,18 +6,6 @@ import {
   type PointerEvent,
   type TouchEvent,
 } from "react";
-import {
-  Video,
-  VideoOff,
-  Copy,
-  SwitchCamera,
-  Maximize2,
-  Mic,
-  MicOff,
-  Minimize2,
-  Phone,
-  Share2,
-} from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   createSignalingSocket,
@@ -25,35 +13,31 @@ import {
   resolveIceServers,
   sendSignal,
 } from "../lib/signaling";
+import {
+  createCallSessionController,
+  shouldForceRelayTransport,
+} from "../lib/callSessionController";
+import {
+  createLocalMediaController,
+  type CameraMode,
+} from "../lib/localMediaController";
 import SelfViewContainer from "./SelfViewContainer";
+import RemoteVideoStage from "./call/RemoteVideoStage";
+import CallStatusOverlay from "./call/CallStatusOverlay";
+import InvitePanel from "./call/InvitePanel";
+import ViewModeToggle from "./call/ViewModeToggle";
+import CallControlsPanel from "./call/CallControlsPanel";
+import InviteShareModal from "./call/InviteShareModal";
+import { useCallSessionState } from "./call/useCallSessionState";
 import { useI18n } from "../i18n/provider";
 import type { TranslationKey } from "../i18n/types";
-import type { CallStatus, ServerSignalMessage } from "../types/signaling";
+import type { ServerSignalMessage } from "../types/signaling";
+import { useCallUiStore } from "../store/callUiStore";
+import { useShallow } from "zustand/react/shallow";
 
 const DEFAULT_ERROR_KEY: TranslationKey = "call.error.default";
-type CameraMode = "front" | "back";
-type RemoteViewMode = "fill" | "fit";
 type SelfViewCorner = "top-right" | "top-left" | "bottom-right" | "bottom-left";
 type Rect = { left: number; top: number; right: number; bottom: number };
-
-function isTruthyEnvFlag(value: string | undefined): boolean {
-  if (!value) return false;
-  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
-}
-
-function getVideoConstraintCandidates(
-  mode: CameraMode,
-): Array<boolean | MediaTrackConstraints> {
-  if (mode === "back") {
-    return [
-      { facingMode: { exact: "environment" } },
-      { facingMode: "environment" },
-      true,
-    ];
-  }
-
-  return [{ facingMode: "user" }, true];
-}
 
 export default function CallPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -80,6 +64,7 @@ export default function CallPage() {
   const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
   const panStartOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const selfViewIdleTimerRef = useRef<number | null>(null);
+  const selfViewExpandedTimerRef = useRef<number | null>(null);
   const selfViewDragRef = useRef<{
     pointerId: number;
     pointerType: string;
@@ -101,24 +86,64 @@ export default function CallPage() {
     position: null,
   });
 
-  const [status, setStatus] = useState<CallStatus>(
-    "call.status.preparingCamera",
-  );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isInitiator, setIsInitiator] = useState(false);
-  const [canRetryMedia, setCanRetryMedia] = useState(false);
+  const {
+    session,
+    setStatus,
+    setErrorMessage,
+    setIsInitiator,
+    setHasRemoteParticipant,
+    resetForRoomJoin,
+  } = useCallSessionState();
+  const { status, errorMessage, hasRemoteParticipant } = session;
   const [cameraMode, setCameraMode] = useState<CameraMode>("front");
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [shareNotice, setShareNotice] = useState<string | null>(null);
-  const [hasRemoteParticipant, setHasRemoteParticipant] = useState(false);
-  const [remoteViewMode, setRemoteViewMode] = useState<RemoteViewMode>("fill");
-  const [remoteZoomScale, setRemoteZoomScale] = useState(1);
-  const [isPinchingRemote, setIsPinchingRemote] = useState(false);
-  const [isPanningRemote, setIsPanningRemote] = useState(false);
-  const [remotePanOffset, setRemotePanOffset] = useState({ x: 0, y: 0 });
+  const cameraModeRef = useRef<CameraMode>(cameraMode);
+  const isMutedRef = useRef(isMuted);
+  const isVideoOffRef = useRef(isVideoOff);
+  const {
+    showInviteModal,
+    shareNotice,
+    remoteViewMode,
+    remoteZoomScale,
+    isPinchingRemote,
+    isPanningRemote,
+    remotePanOffset,
+  } = useCallUiStore(
+    useShallow((state) => ({
+      showInviteModal: state.showInviteModal,
+      shareNotice: state.shareNotice,
+      remoteViewMode: state.remoteViewMode,
+      remoteZoomScale: state.remoteZoomScale,
+      isPinchingRemote: state.isPinchingRemote,
+      isPanningRemote: state.isPanningRemote,
+      remotePanOffset: state.remotePanOffset,
+    })),
+  );
+  const {
+    setShowInviteModal,
+    setShareNotice,
+    clearShareNotice,
+    setRemoteZoomScale,
+    setIsPinchingRemote,
+    setIsPanningRemote,
+    setRemotePanOffset,
+    resetRemoteTransform,
+    toggleRemoteViewMode,
+  } = useCallUiStore(
+    useShallow((state) => ({
+      setShowInviteModal: state.setShowInviteModal,
+      setShareNotice: state.setShareNotice,
+      clearShareNotice: state.clearShareNotice,
+      setRemoteZoomScale: state.setRemoteZoomScale,
+      setIsPinchingRemote: state.setIsPinchingRemote,
+      setIsPanningRemote: state.setIsPanningRemote,
+      setRemotePanOffset: state.setRemotePanOffset,
+      resetRemoteTransform: state.resetRemoteTransform,
+      toggleRemoteViewMode: state.toggleRemoteViewMode,
+    })),
+  );
   const [localAspectRatio, setLocalAspectRatio] = useState(16 / 9);
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -137,14 +162,15 @@ export default function CallPage() {
 
   const validRoomId = roomId ?? "";
   const isMobileViewport = viewportSize.width <= 760;
+  const forceRelayTransport = useMemo(() => shouldForceRelayTransport(), []);
   const inviteLink = useMemo(
     () => `${window.location.origin}/call/${validRoomId}`,
     [validRoomId],
   );
 
-  function stopStream(stream: MediaStream | null) {
-    stream?.getTracks().forEach((track) => track.stop());
-  }
+  cameraModeRef.current = cameraMode;
+  isMutedRef.current = isMuted;
+  isVideoOffRef.current = isVideoOff;
 
   function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
@@ -423,6 +449,38 @@ export default function CallPage() {
     }
   }
 
+  function clearSelfViewExpandedTimer() {
+    if (selfViewExpandedTimerRef.current !== null) {
+      window.clearTimeout(selfViewExpandedTimerRef.current);
+      selfViewExpandedTimerRef.current = null;
+    }
+  }
+
+  function collapseSelfViewExpanded() {
+    setIsSelfViewExpanded((expanded) => {
+      if (!expanded) return expanded;
+
+      setSelfViewCorner(selfViewCompactStateRef.current.corner);
+      setSelfViewPosition(selfViewCompactStateRef.current.position);
+      return false;
+    });
+  }
+
+  function primeSelfViewExpandedTimer() {
+    clearSelfViewExpandedTimer();
+
+    if (!isSelfViewExpanded || isSelfViewHidden) return;
+
+    selfViewExpandedTimerRef.current = window.setTimeout(() => {
+      if (selfViewDragRef.current) {
+        primeSelfViewExpandedTimer();
+        return;
+      }
+
+      collapseSelfViewExpanded();
+    }, 2000);
+  }
+
   function primeSelfViewIdleTimer() {
     clearSelfViewIdleTimer();
     selfViewIdleTimerRef.current = window.setTimeout(() => {
@@ -433,6 +491,10 @@ export default function CallPage() {
   function markSelfViewInteraction() {
     setIsSelfViewIdle(false);
     primeSelfViewIdleTimer();
+
+    if (isSelfViewExpanded && !isSelfViewHidden) {
+      primeSelfViewExpandedTimer();
+    }
   }
 
   function detectSelfViewSwipeToHide(
@@ -526,152 +588,84 @@ export default function CallPage() {
     };
   }
 
-  async function attachLocalMedia(mode: CameraMode) {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      throw new DOMException(
-        t("call.error.media.unsupportedBrowser"),
-        "NotSupportedError",
-      );
-    }
+  const localMediaController = useMemo(
+    () =>
+      createLocalMediaController({
+        localVideoRef,
+        localStreamRef,
+        mediaStartPromiseRef,
+        pcRef,
+        getCameraMode: () => cameraModeRef.current,
+        getIsMuted: () => isMutedRef.current,
+        getIsVideoOff: () => isVideoOffRef.current,
+        setErrorMessage,
+        onLocalVideoMetadata: updateLocalAspectRatioFromElement,
+        messages: {
+          unsupportedBrowser: t("call.error.media.unsupportedBrowser"),
+          notAllowed: t("call.error.media.notAllowed"),
+          notFound: t("call.error.media.notFound"),
+          notReadable: t("call.error.media.notReadable"),
+          security: t("call.error.media.security"),
+          startFailed: t("call.error.media.startFailed"),
+        },
+      }),
+    [setErrorMessage, t],
+  );
 
-    let lastError: unknown;
-
-    for (const videoConstraint of getVideoConstraintCandidates(mode)) {
-      try {
-        return await navigator.mediaDevices.getUserMedia({
-          video: videoConstraint,
-          audio: true,
-        });
-      } catch {
-        try {
-          return await navigator.mediaDevices.getUserMedia({
-            video: videoConstraint,
-            audio: false,
-          });
-        } catch (error) {
-          lastError = error;
-        }
-      }
-    }
-
-    throw lastError;
-  }
-
-  function getMediaErrorMessageKey(error: unknown): TranslationKey {
-    const mediaError = error as DOMException;
-
-    if (mediaError?.name === "NotAllowedError") {
-      return "call.error.media.notAllowed";
-    }
-    if (mediaError?.name === "NotFoundError") {
-      return "call.error.media.notFound";
-    }
-    if (mediaError?.name === "NotReadableError") {
-      return "call.error.media.notReadable";
-    }
-    if (mediaError?.name === "SecurityError") {
-      return "call.error.media.security";
-    }
-
-    return "call.error.media.startFailed";
-  }
-
-  function syncLocalTracksToPeerConnection(
-    pc: RTCPeerConnection,
-    stream: MediaStream,
-  ) {
-    stream.getTracks().forEach((track) => {
-      const sender = pc
-        .getSenders()
-        .find((existingSender) => existingSender.track?.kind === track.kind);
-
-      if (sender) {
-        void sender.replaceTrack(track);
-      } else {
-        pc.addTrack(track, stream);
-      }
-    });
-  }
-
-  function applyMediaPreferenceToStream(stream: MediaStream) {
-    const audioEnabled = !isMuted;
-    const videoEnabled = !isVideoOff;
-
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = audioEnabled;
-    });
-
-    stream.getVideoTracks().forEach((track) => {
-      track.enabled = videoEnabled;
-    });
-  }
-
-  async function startLocalMedia(
-    mode: CameraMode = cameraMode,
-  ): Promise<boolean> {
-    const pc = pcRef.current;
-    if (!pc) return false;
-
-    try {
-      const stream = await attachLocalMedia(mode);
-      const previousStream = localStreamRef.current;
-
-      applyMediaPreferenceToStream(stream);
-
-      localStreamRef.current = stream;
-      setCanRetryMedia(false);
-      setErrorMessage(null);
-
-      syncLocalVideoElementWithStream(stream);
-
-      syncLocalTracksToPeerConnection(pc, stream);
-
-      if (previousStream && previousStream.id !== stream.id) {
-        stopStream(previousStream);
-      }
-
-      return true;
-    } catch (error) {
-      setCanRetryMedia(true);
-      setErrorMessage(t(getMediaErrorMessageKey(error)));
-      return false;
-    }
-  }
-
-  function syncLocalVideoElementWithStream(stream: MediaStream | null) {
-    const videoElement = localVideoRef.current;
-    if (!videoElement) return;
-
-    videoElement.srcObject = stream;
-    if (stream) {
-      void videoElement.play().catch(() => {
-        // ignore autoplay promise rejections
-      });
-      updateLocalAspectRatioFromElement(videoElement);
-    }
-  }
-
-  async function ensureLocalMediaStarted(): Promise<boolean> {
-    if (localStreamRef.current) return true;
-
-    if (!mediaStartPromiseRef.current) {
-      mediaStartPromiseRef.current = startLocalMedia().finally(() => {
-        mediaStartPromiseRef.current = null;
-      });
-    }
-
-    return mediaStartPromiseRef.current;
-  }
+  const callSessionController = useMemo(
+    () =>
+      createCallSessionController({
+        socketRef,
+        pcRef,
+        resolvedIceServersRef,
+        localStreamRef,
+        queuedCandidatesRef,
+        isInitiatorRef,
+        hasAutoOpenedInviteRef,
+        disconnectTimerRef,
+        restartAttemptsRef,
+        remoteVideoRef,
+        forceRelay: forceRelayTransport,
+        messages: {
+          fallbackNetwork: t("call.error.fallbackNetwork"),
+          unstableConnection: t("call.error.unstableConnection"),
+          connectionLost: t("call.error.connectionLost"),
+          roomFull: t("call.error.roomFull"),
+          defaultError: t(DEFAULT_ERROR_KEY),
+        },
+        setStatus,
+        setErrorMessage,
+        setIsInitiator,
+        setHasRemoteParticipant,
+        setShowInviteModal,
+        resetRemoteTransform,
+        ensureLocalMediaStarted: () =>
+          localMediaController.ensureLocalMediaStarted(),
+        syncLocalTracksToPeerConnection: (pc, stream) =>
+          localMediaController.syncLocalTracksToPeerConnection(pc, stream),
+      }),
+    [
+      forceRelayTransport,
+      localMediaController,
+      resetRemoteTransform,
+      setErrorMessage,
+      setHasRemoteParticipant,
+      setIsInitiator,
+      setShowInviteModal,
+      setStatus,
+      t,
+    ],
+  );
 
   useEffect(() => {
     if (!shareNotice) return;
 
     const timer = window.setTimeout(() => {
-      setShareNotice(null);
+      clearShareNotice();
     }, 2600);
 
     return () => window.clearTimeout(timer);
-  }, [shareNotice]);
+  }, [clearShareNotice, shareNotice]);
 
   useEffect(() => {
     const onResize = () => {
@@ -687,9 +681,41 @@ export default function CallPage() {
 
     return () => {
       clearSelfViewIdleTimer();
+      clearSelfViewExpandedTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isSelfViewExpanded || isSelfViewHidden) {
+      clearSelfViewExpandedTimer();
+      return;
+    }
+
+    primeSelfViewExpandedTimer();
+
+    return () => {
+      clearSelfViewExpandedTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelfViewExpanded, isSelfViewHidden]);
+
+  useEffect(() => {
+    if (!isSelfViewExpanded || isSelfViewHidden) return;
+
+    const handleOutsidePointerDown = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (selfViewRef.current?.contains(target)) return;
+
+      collapseSelfViewExpanded();
+    };
+
+    window.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [isSelfViewExpanded, isSelfViewHidden]);
 
   useEffect(() => {
     const markInteraction = () => {
@@ -748,16 +774,7 @@ export default function CallPage() {
   useEffect(() => {
     if (isSelfViewHidden) return;
     const stream = localStreamRef.current;
-    const videoElement = localVideoRef.current;
-    if (!videoElement) return;
-
-    videoElement.srcObject = stream;
-    if (stream) {
-      void videoElement.play().catch(() => {
-        // ignore autoplay promise rejections
-      });
-      updateLocalAspectRatioFromElement(videoElement);
-    }
+    localMediaController.syncLocalVideoElementWithStream(stream);
   }, [isSelfViewHidden, cameraMode]);
 
   useEffect(() => {
@@ -777,15 +794,17 @@ export default function CallPage() {
     }
 
     let isMounted = true;
-    setHasRemoteParticipant(false);
-    setStatus("call.status.joining");
+    resetForRoomJoin();
 
     const setup = async () => {
       try {
         const iceServers = await resolveIceServers();
         resolvedIceServersRef.current = iceServers;
 
-        const pc = createPeerConnection(validRoomId, iceServers);
+        const pc = callSessionController.createPeerConnection(
+          validRoomId,
+          iceServers,
+        );
         pcRef.current = pc;
 
         const socket = createSignalingSocket((message) => {
@@ -813,7 +832,7 @@ export default function CallPage() {
         });
 
         if (!isMounted) return;
-        await ensureLocalMediaStarted();
+        await localMediaController.ensureLocalMediaStarted();
       } catch (error) {
         if (!isMounted) return;
 
@@ -828,243 +847,10 @@ export default function CallPage() {
       leaveCall(validRoomId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validRoomId]);
+  }, [callSessionController, localMediaController, validRoomId]);
 
   async function onServerMessage(message: ServerSignalMessage, room: string) {
-    const pc = pcRef.current;
-    if (!pc) return;
-
-    switch (message.type) {
-      case "joined": {
-        const initiator = Boolean(message.isInitiator);
-        isInitiatorRef.current = initiator;
-        setIsInitiator(initiator);
-        setStatus(
-          initiator ? "call.status.waitingParticipant" : "call.status.joining",
-        );
-        if (initiator && !hasAutoOpenedInviteRef.current) {
-          hasAutoOpenedInviteRef.current = true;
-          setShowInviteModal(true);
-        }
-        break;
-      }
-      case "peer-joined": {
-        setHasRemoteParticipant(true);
-        if (!isInitiatorRef.current) break;
-        setStatus("call.status.connecting");
-        await ensureLocalMediaStarted();
-        await createAndSendOffer(room);
-        break;
-      }
-      case "offer": {
-        setHasRemoteParticipant(true);
-        setStatus("call.status.connecting");
-        setErrorMessage(null);
-
-        await ensureLocalMediaStarted();
-
-        await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-        await flushQueuedCandidates();
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        sendSignal(socketRef.current, {
-          type: "answer",
-          roomId: room,
-          sdp: answer,
-        });
-        break;
-      }
-      case "answer": {
-        setHasRemoteParticipant(true);
-        setErrorMessage(null);
-        await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-        await flushQueuedCandidates();
-        break;
-      }
-      case "ice-candidate": {
-        if (pc.remoteDescription) {
-          await pc.addIceCandidate(message.candidate);
-        } else {
-          queuedCandidatesRef.current.push(message.candidate);
-        }
-        break;
-      }
-      case "peer-left": {
-        setHasRemoteParticipant(false);
-        setRemoteZoomScale(1);
-        setRemotePanOffset({ x: 0, y: 0 });
-        clearDisconnectTimer();
-        restartAttemptsRef.current = 0;
-        setStatus("call.status.waitingParticipant");
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = null;
-        }
-        await resetPeerConnection(room);
-        break;
-      }
-      case "room-full": {
-        setErrorMessage(t("call.error.roomFull"));
-        break;
-      }
-      case "error": {
-        setErrorMessage(message.message || t(DEFAULT_ERROR_KEY));
-        break;
-      }
-    }
-  }
-
-  function createPeerConnection(
-    room: string,
-    iceServers: RTCIceServer[],
-  ): RTCPeerConnection {
-    let pc: RTCPeerConnection;
-
-    try {
-      pc = new RTCPeerConnection({
-        iceServers,
-        ...(isTruthyEnvFlag(import.meta.env.VITE_FORCE_RELAY)
-          ? { iceTransportPolicy: "relay" as RTCIceTransportPolicy }
-          : {}),
-      });
-    } catch {
-      pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      setErrorMessage(t("call.error.fallbackNetwork"));
-    }
-
-    pc.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (remoteVideoRef.current && stream) {
-        setHasRemoteParticipant(true);
-        remoteVideoRef.current.srcObject = stream;
-      }
-    };
-
-    pc.onicecandidate = (event) => {
-      if (!event.candidate) return;
-      sendSignal(socketRef.current, {
-        type: "ice-candidate",
-        roomId: room,
-        candidate: event.candidate.toJSON(),
-      });
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") {
-        clearDisconnectTimer();
-        restartAttemptsRef.current = 0;
-        setErrorMessage(null);
-        setStatus("call.status.connected");
-      }
-      if (pc.connectionState === "disconnected") {
-        setStatus("call.status.connecting");
-        scheduleDisconnectRecovery(room);
-      }
-      if (pc.connectionState === "failed") {
-        void attemptReconnect(room);
-      }
-      if (pc.connectionState === "closed") {
-        clearDisconnectTimer();
-        setStatus("call.status.ended");
-      }
-    };
-
-    return pc;
-  }
-
-  async function createAndSendOffer(room: string) {
-    const pc = pcRef.current;
-    if (!pc) return;
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    sendSignal(socketRef.current, {
-      type: "offer",
-      roomId: room,
-      sdp: offer,
-    });
-  }
-
-  function clearDisconnectTimer() {
-    if (disconnectTimerRef.current !== null) {
-      window.clearTimeout(disconnectTimerRef.current);
-      disconnectTimerRef.current = null;
-    }
-  }
-
-  function scheduleDisconnectRecovery(room: string) {
-    clearDisconnectTimer();
-
-    disconnectTimerRef.current = window.setTimeout(() => {
-      void attemptReconnect(room);
-    }, 8000);
-  }
-
-  async function attemptReconnect(room: string) {
-    clearDisconnectTimer();
-
-    const pc = pcRef.current;
-    if (!pc || pc.signalingState === "closed") return;
-
-    if (!isInitiatorRef.current) {
-      setErrorMessage(t("call.error.unstableConnection"));
-      return;
-    }
-
-    if (restartAttemptsRef.current >= 2) {
-      setErrorMessage(t("call.error.connectionLost"));
-      return;
-    }
-
-    restartAttemptsRef.current += 1;
-    setStatus("call.status.connecting");
-
-    try {
-      const restartOffer = await pc.createOffer({ iceRestart: true });
-      await pc.setLocalDescription(restartOffer);
-
-      sendSignal(socketRef.current, {
-        type: "offer",
-        roomId: room,
-        sdp: restartOffer,
-      });
-    } catch {
-      setErrorMessage(t("call.error.connectionLost"));
-    }
-  }
-
-  async function flushQueuedCandidates() {
-    const pc = pcRef.current;
-    if (!pc || !pc.remoteDescription) return;
-
-    const queued = [...queuedCandidatesRef.current];
-    queuedCandidatesRef.current = [];
-
-    for (const candidate of queued) {
-      await pc.addIceCandidate(candidate);
-    }
-  }
-
-  async function resetPeerConnection(room: string) {
-    const existing = pcRef.current;
-    if (existing) {
-      existing.close();
-    }
-
-    clearDisconnectTimer();
-    restartAttemptsRef.current = 0;
-
-    const fresh = createPeerConnection(room, resolvedIceServersRef.current);
-    pcRef.current = fresh;
-
-    const stream = localStreamRef.current;
-    if (stream) {
-      syncLocalTracksToPeerConnection(fresh, stream);
-    }
+    await callSessionController.handleServerMessage(message, room);
   }
 
   async function copyInviteLink() {
@@ -1103,7 +889,7 @@ export default function CallPage() {
     setIsSwitchingCamera(true);
     setStatus("call.status.connecting");
 
-    const started = await startLocalMedia(nextMode);
+    const started = await localMediaController.startLocalMedia(nextMode);
 
     if (started) {
       setCameraMode(nextMode);
@@ -1113,12 +899,6 @@ export default function CallPage() {
     }
 
     setIsSwitchingCamera(false);
-  }
-
-  function toggleRemoteViewMode() {
-    setRemoteViewMode((previous) => (previous === "fill" ? "fit" : "fill"));
-    setRemoteZoomScale(1);
-    setRemotePanOffset({ x: 0, y: 0 });
   }
 
   function handleRemoteTouchStart(event: TouchEvent<HTMLDivElement>) {
@@ -1196,54 +976,34 @@ export default function CallPage() {
   }
 
   async function toggleMute() {
-    const stream = localStreamRef.current;
     const nextMuted = !isMuted;
 
-    if (!stream) {
-      setIsMuted(nextMuted);
-      return;
-    }
-
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted;
-    });
+    localMediaController.setAudioEnabled(!nextMuted);
 
     setIsMuted(nextMuted);
   }
 
   async function toggleVideo() {
-    const stream = localStreamRef.current;
     const nextVideoOff = !isVideoOff;
 
-    if (!stream || stream.getVideoTracks().length === 0) {
-      const started = await startLocalMedia(cameraMode);
+    if (!localMediaController.hasVideoTrack()) {
+      const started = await localMediaController.startLocalMedia(cameraMode);
       if (started) {
         setIsVideoOff(false);
       }
       return;
     }
 
-    stream.getVideoTracks().forEach((track) => {
-      track.enabled = !nextVideoOff;
-    });
+    localMediaController.setVideoEnabled(!nextVideoOff);
 
     setIsVideoOff(nextVideoOff);
   }
 
   function leaveCall(room: string) {
-    clearDisconnectTimer();
-
-    sendSignal(socketRef.current, { type: "leave", roomId: room });
-    socketRef.current?.close();
-    socketRef.current = null;
-
-    pcRef.current?.close();
-    pcRef.current = null;
-
-    stopStream(localStreamRef.current);
-    localStreamRef.current = null;
+    callSessionController.dispose(room);
 
     clearSelfViewIdleTimer();
+    clearSelfViewExpandedTimer();
   }
 
   function toggleSelfViewExpanded() {
@@ -1334,6 +1094,8 @@ export default function CallPage() {
     const drag = selfViewDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
+    markSelfViewInteraction();
+
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
     if (!drag.moved && Math.hypot(deltaX, deltaY) > 4) {
@@ -1423,6 +1185,7 @@ export default function CallPage() {
   function handleSelfViewDoubleClick(event: PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
+    markSelfViewInteraction();
     void switchCamera();
   }
 
@@ -1440,66 +1203,34 @@ export default function CallPage() {
   return (
     <main className="call-page">
       <section className="video-shell">
-        <div
-          className="remote-video-gesture-layer"
-          ref={remoteGestureLayerRef}
+        <RemoteVideoStage
+          remoteGestureLayerRef={remoteGestureLayerRef}
+          remoteVideoRef={remoteVideoRef}
           onTouchStart={handleRemoteTouchStart}
           onTouchMove={handleRemoteTouchMove}
           onTouchEnd={handleRemoteTouchEnd}
-          onTouchCancel={handleRemoteTouchEnd}
-        >
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className={`remote-video ${remoteViewMode === "fit" ? "is-fit" : ""} ${isPinchingRemote || isPanningRemote ? "is-pinching" : ""}`}
-            style={{
-              transform: `translate3d(${remotePanOffset.x}px, ${remotePanOffset.y}px, 0) scale(${remoteZoomScale})`,
-            }}
-          />
-        </div>
+          remoteViewMode={remoteViewMode}
+          isPinchingRemote={isPinchingRemote}
+          isPanningRemote={isPanningRemote}
+          remotePanOffset={remotePanOffset}
+          remoteZoomScale={remoteZoomScale}
+        />
 
-        <div className="top-overlay">
-          <div className="glass status-pill">{t(status)}</div>
-        </div>
+        <CallStatusOverlay
+          statusLabel={t(status)}
+          errorMessage={errorMessage}
+          shareNotice={shareNotice}
+        />
 
-        {errorMessage ? (
-          <p className="glass error-banner" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-
-        {shareNotice ? (
-          <p className="glass share-notice">{shareNotice}</p>
-        ) : null}
-
-        {!hasRemoteParticipant ? (
-          <div className="invite-center-wrap" role="status" aria-live="polite">
-            <div className="glass invite-center-card">
-              <button
-                className="glass primary invite-center-button"
-                onClick={() => void shareInviteLink()}
-                aria-label={t("call.invite.shareAria")}
-              >
-                <Share2 className="invite-cta-icon" aria-hidden="true" />
-                <span>{t("call.invite.shareCta")}</span>
-              </button>
-
-              <div className="invite-link-row">
-                <p className="invite-center-url" title={inviteLink}>
-                  {inviteLink}
-                </p>
-                <button
-                  className="glass icon-button invite-copy-button"
-                  onClick={() => void copyInviteLink()}
-                  aria-label={t("call.invite.copyAria")}
-                >
-                  <Copy className="invite-copy-icon" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <InvitePanel
+          visible={!hasRemoteParticipant}
+          inviteLink={inviteLink}
+          shareAriaLabel={t("call.invite.shareAria")}
+          shareLabel={t("call.invite.shareCta")}
+          copyAriaLabel={t("call.invite.copyAria")}
+          onShare={() => void shareInviteLink()}
+          onCopy={() => void copyInviteLink()}
+        />
 
         <SelfViewContainer
           localVideoRef={localVideoRef}
@@ -1522,6 +1253,7 @@ export default function CallPage() {
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
+              markSelfViewInteraction();
               toggleSelfViewExpanded();
             }
           }}
@@ -1529,128 +1261,63 @@ export default function CallPage() {
           onLocalVideoMetadata={updateLocalAspectRatioFromElement}
           isMuted={isMuted}
           isVideoOff={isVideoOff}
-          onSwitchCamera={switchCamera}
-          onToggleVideo={toggleVideo}
+          onSwitchCamera={async () => {
+            markSelfViewInteraction();
+            await switchCamera();
+          }}
+          onToggleVideo={async () => {
+            markSelfViewInteraction();
+            await toggleVideo();
+          }}
           onHideSelfView={hideSelfView}
         />
 
-        <button
-          className="glass icon-button view-mode-toggle"
-          onClick={toggleRemoteViewMode}
-          aria-label={
-            remoteViewMode === "fill"
-              ? t("call.view.fitAria")
-              : t("call.view.fillAria")
-          }
-        >
-          {remoteViewMode === "fill" ? (
-            <Minimize2 className="control-icon" aria-hidden="true" />
-          ) : (
-            <Maximize2 className="control-icon" aria-hidden="true" />
-          )}
-          <span>
-            {remoteViewMode === "fill"
-              ? t("call.view.fitLabel")
-              : t("call.view.fillLabel")}
-          </span>
-        </button>
+        <ViewModeToggle
+          remoteViewMode={remoteViewMode}
+          onToggle={toggleRemoteViewMode}
+          fitAriaLabel={t("call.view.fitAria")}
+          fillAriaLabel={t("call.view.fillAria")}
+          fitLabel={t("call.view.fitLabel")}
+          fillLabel={t("call.view.fillLabel")}
+        />
 
-        <div className="controls-float glass">
-          <button
-            className={`glass icon-button control-button ${isVideoOff ? "is-active" : ""}`}
-            onClick={() => void toggleVideo()}
-            aria-pressed={isVideoOff}
-            aria-label={
-              isVideoOff
-                ? t("call.controls.videoOnAria")
-                : t("call.controls.videoOffAria")
-            }
-          >
-            {isVideoOff ? (
-              <VideoOff className="control-icon" aria-hidden="true" />
-            ) : (
-              <Video className="control-icon" aria-hidden="true" />
-            )}
-            <span className="control-label">
-              {isVideoOff
-                ? t("call.controls.videoOnLabel")
-                : t("call.controls.videoOffLabel")}
-            </span>
-          </button>
-          <button
-            className={`glass icon-button control-button ${isMuted ? "is-active" : ""}`}
-            onClick={() => void toggleMute()}
-            aria-pressed={isMuted}
-            aria-label={
-              isMuted
-                ? t("call.controls.unmuteAria")
-                : t("call.controls.muteAria")
-            }
-          >
-            {isMuted ? (
-              <MicOff className="control-icon" aria-hidden="true" />
-            ) : (
-              <Mic className="control-icon" aria-hidden="true" />
-            )}
-            <span className="control-label">
-              {isMuted
-                ? t("call.controls.unmuteLabel")
-                : t("call.controls.muteLabel")}
-            </span>
-          </button>
-          <button
-            className="glass icon-button control-button"
-            onClick={() => void switchCamera()}
-            disabled={isSwitchingCamera}
-            aria-label={t("call.controls.flipAria")}
-          >
-            <SwitchCamera className="control-icon" aria-hidden="true" />
-            <span className="control-label">
-              {isSwitchingCamera
-                ? t("call.controls.flippingLabel")
-                : t("call.controls.flipLabel")}
-            </span>
-          </button>
-          <button
-            className="glass danger icon-button control-button end-button"
-            onClick={endCall}
-            aria-label={t("call.controls.endAria")}
-          >
-            <Phone className="control-icon end-call-icon" aria-hidden="true" />
-            <span className="control-label">{t("call.controls.endLabel")}</span>
-          </button>
-        </div>
+        <CallControlsPanel
+          isVideoOff={isVideoOff}
+          isMuted={isMuted}
+          isSwitchingCamera={isSwitchingCamera}
+          onToggleVideo={() => void toggleVideo()}
+          onToggleMute={() => void toggleMute()}
+          onSwitchCamera={() => void switchCamera()}
+          onEndCall={endCall}
+          labels={{
+            videoOnAria: t("call.controls.videoOnAria"),
+            videoOffAria: t("call.controls.videoOffAria"),
+            videoOn: t("call.controls.videoOnLabel"),
+            videoOff: t("call.controls.videoOffLabel"),
+            unmuteAria: t("call.controls.unmuteAria"),
+            muteAria: t("call.controls.muteAria"),
+            unmute: t("call.controls.unmuteLabel"),
+            mute: t("call.controls.muteLabel"),
+            flipAria: t("call.controls.flipAria"),
+            flipping: t("call.controls.flippingLabel"),
+            flip: t("call.controls.flipLabel"),
+            endAria: t("call.controls.endAria"),
+            end: t("call.controls.endLabel"),
+          }}
+        />
       </section>
 
-      {showInviteModal && !hasRemoteParticipant ? (
-        <section
-          className="modal-backdrop"
-          onClick={() => setShowInviteModal(false)}
-        >
-          <div
-            className="modal glass"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{t("call.modal.title")}</h2>
-            <p>{t("call.modal.subtitle")}</p>
-            <input value={inviteLink} readOnly />
-            <div className="modal-actions">
-              <button
-                className="glass icon-button"
-                onClick={() => void copyInviteLink()}
-              >
-                {t("call.modal.copyButton")}
-              </button>
-              <button
-                className="glass primary share-button"
-                onClick={() => void shareInviteLink()}
-              >
-                {t("call.modal.shareButton")}
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <InviteShareModal
+        open={showInviteModal && !hasRemoteParticipant}
+        inviteLink={inviteLink}
+        title={t("call.modal.title")}
+        subtitle={t("call.modal.subtitle")}
+        copyButtonLabel={t("call.modal.copyButton")}
+        shareButtonLabel={t("call.modal.shareButton")}
+        onClose={() => setShowInviteModal(false)}
+        onCopy={() => void copyInviteLink()}
+        onShare={() => void shareInviteLink()}
+      />
     </main>
   );
 }

@@ -27,3 +27,51 @@ export type CallStatus =
   | "call.status.connecting"
   | "call.status.connected"
   | "call.status.ended";
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function hasStringField(
+  payload: Record<string, unknown>,
+  key: string,
+): boolean {
+  return typeof payload[key] === "string" && payload[key].length > 0;
+}
+
+function hasSdpField(payload: Record<string, unknown>): boolean {
+  return isObjectRecord(payload.sdp);
+}
+
+function hasCandidateField(payload: Record<string, unknown>): boolean {
+  return isObjectRecord(payload.candidate);
+}
+
+export function isServerSignalMessage(
+  value: unknown,
+): value is ServerSignalMessage {
+  if (!isObjectRecord(value)) return false;
+  if (!hasStringField(value, "type")) return false;
+
+  switch (value.type) {
+    case "joined":
+      return (
+        hasStringField(value, "roomId") &&
+        hasStringField(value, "participantId") &&
+        typeof value.isInitiator === "boolean"
+      );
+    case "peer-joined":
+    case "peer-left":
+    case "room-full":
+      return hasStringField(value, "roomId");
+    case "offer":
+    case "answer":
+      return hasStringField(value, "roomId") && hasSdpField(value);
+    case "ice-candidate":
+      return hasStringField(value, "roomId") && hasCandidateField(value);
+    case "error":
+      return typeof value.message === "string";
+    default:
+      return false;
+  }
+}
