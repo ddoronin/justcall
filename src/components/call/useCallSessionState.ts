@@ -22,12 +22,18 @@ function callSessionReducer(
       };
     case "set-is-initiator":
       return { ...state, isInitiator: action.isInitiator };
+    case "set-connected-at":
+      return { ...state, connectedAt: action.connectedAt };
+    case "set-ended-at":
+      return { ...state, endedAt: action.endedAt };
     case "reset-for-room-join":
       return {
         ...state,
         hasRemoteParticipant: false,
         errorMessage: null,
         status: "call.status.joining",
+        connectedAt: null,
+        endedAt: null,
       };
     default:
       return state;
@@ -59,6 +65,14 @@ export function useCallSessionState() {
     dispatch({ type: "set-is-initiator", isInitiator });
   }, []);
 
+  const setConnectedAt = useCallback((connectedAt: number | null) => {
+    dispatch({ type: "set-connected-at", connectedAt });
+  }, []);
+
+  const setEndedAt = useCallback((endedAt: number | null) => {
+    dispatch({ type: "set-ended-at", endedAt });
+  }, []);
+
   const resetForRoomJoin = useCallback(() => {
     dispatch({ type: "reset-for-room-join" });
   }, []);
@@ -69,6 +83,8 @@ export function useCallSessionState() {
     setErrorMessage,
     setHasRemoteParticipant,
     setIsInitiator,
+    setConnectedAt,
+    setEndedAt,
     resetForRoomJoin,
   };
 }

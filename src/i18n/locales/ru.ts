@@ -68,6 +68,9 @@ const ru: Translations = {
     "Отправьте эту ссылку, чтобы собеседник сразу подключился.",
   "call.modal.copyButton": "Скопировать",
   "call.modal.shareButton": "Поделиться",
+  "call.completed.message": "Видеозвонок завершён.",
+  "call.completed.durationLabel": "Длительность звонка",
+  "call.completed.goHome": "На главную",
 };
 
 export default ru;

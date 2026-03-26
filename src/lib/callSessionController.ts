@@ -180,27 +180,6 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
     return pc;
   }
 
-  async function resetPeerConnection(room: string) {
-    const existing = deps.pcRef.current;
-    if (existing) {
-      existing.close();
-    }
-
-    clearDisconnectTimer();
-    deps.restartAttemptsRef.current = 0;
-
-    const fresh = createPeerConnection(
-      room,
-      deps.resolvedIceServersRef.current,
-    );
-    deps.pcRef.current = fresh;
-
-    const stream = deps.localStreamRef.current;
-    if (stream) {
-      deps.syncLocalTracksToPeerConnection(fresh, stream);
-    }
-  }
-
   async function handleServerMessage(
     message: ServerSignalMessage,
     room: string,
@@ -274,11 +253,10 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
         deps.resetRemoteTransform();
         clearDisconnectTimer();
         deps.restartAttemptsRef.current = 0;
-        deps.setStatus("call.status.waitingParticipant");
+        deps.setStatus("call.status.ended");
         if (deps.remoteVideoRef.current) {
           deps.remoteVideoRef.current.srcObject = null;
         }
-        await resetPeerConnection(room);
         break;
       }
       case "room-full": {

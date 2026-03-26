@@ -60,6 +60,9 @@ const zhCN: Translations = {
   "call.modal.subtitle": "发送此链接，对方可立即加入。",
   "call.modal.copyButton": "复制",
   "call.modal.shareButton": "分享",
+  "call.completed.message": "视频通话已完成。",
+  "call.completed.durationLabel": "通话时长",
+  "call.completed.goHome": "返回首页",
 };
 
 export default zhCN;

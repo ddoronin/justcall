@@ -63,6 +63,9 @@ const enUS: Translations = {
   "call.modal.subtitle": "Send this link so they can join instantly.",
   "call.modal.copyButton": "Copy",
   "call.modal.shareButton": "Share",
+  "call.completed.message": "The video call completed.",
+  "call.completed.durationLabel": "Call duration",
+  "call.completed.goHome": "Go to home page",
 };
 
 export default enUS;

@@ -54,6 +54,9 @@ export type TranslationKey =
   | "call.modal.title"
   | "call.modal.subtitle"
   | "call.modal.copyButton"
-  | "call.modal.shareButton";
+  | "call.modal.shareButton"
+  | "call.completed.message"
+  | "call.completed.durationLabel"
+  | "call.completed.goHome";
 
 export type Translations = Record<TranslationKey, string>;

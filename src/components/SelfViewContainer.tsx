@@ -5,6 +5,7 @@ import type {
 } from "react";
 import {
   Eye,
+  Loader2,
   MicOff,
   Minimize2,
   SwitchCamera,
@@ -37,6 +38,8 @@ type SelfViewContainerProps = {
   onLocalVideoMetadata: (video: HTMLVideoElement | null) => void;
   isMuted: boolean;
   isVideoOff: boolean;
+  isCameraInitializing: boolean;
+  cameraInitializingLabel: string;
   onSwitchCamera: () => Promise<void>;
   onToggleVideo: () => Promise<void>;
   onHideSelfView: () => void;
@@ -65,6 +68,8 @@ export default function SelfViewContainer({
   onLocalVideoMetadata,
   isMuted,
   isVideoOff,
+  isCameraInitializing,
+  cameraInitializingLabel,
   onSwitchCamera,
   onToggleVideo,
   onHideSelfView,
@@ -126,6 +131,15 @@ export default function SelfViewContainer({
         )}
         onLoadedMetadata={(event) => onLocalVideoMetadata(event.currentTarget)}
       />
+
+      {isCameraInitializing ? (
+        <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center bg-[#090c15b3] backdrop-blur-[2px]">
+          <div className="glass inline-flex items-center gap-2.5 rounded-full px-3.5 py-2 text-xs font-medium text-[#edf2ff]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            <span>{cameraInitializingLabel}</span>
+          </div>
+        </div>
+      ) : null}
 
       <div
         className="pointer-events-none absolute left-2 top-2 z-[2] inline-flex items-center gap-1.5"

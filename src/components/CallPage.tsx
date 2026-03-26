@@ -54,6 +54,7 @@ export default function CallPage() {
   const resolvedIceServersRef = useRef<RTCIceServer[]>(parseIceServers());
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const cameraInitRequestsRef = useRef(0);
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const isInitiatorRef = useRef(false);
   const hasAutoOpenedInviteRef = useRef(false);
@@ -92,11 +93,14 @@ export default function CallPage() {
     setErrorMessage,
     setIsInitiator,
     setHasRemoteParticipant,
+    setConnectedAt,
+    setEndedAt,
     resetForRoomJoin,
   } = useCallSessionState();
-  const { status, errorMessage, hasRemoteParticipant } = session;
+  const { status, errorMessage, hasRemoteParticipant, connectedAt } = session;
   const [cameraMode, setCameraMode] = useState<CameraMode>("front");
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [isCameraInitializing, setIsCameraInitializing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const cameraModeRef = useRef<CameraMode>(cameraMode);
@@ -167,6 +171,7 @@ export default function CallPage() {
     () => `${window.location.origin}/call/${validRoomId}`,
     [validRoomId],
   );
+  const hasCompletedCallRef = useRef(false);
 
   cameraModeRef.current = cameraMode;
   isMutedRef.current = isMuted;
@@ -772,6 +777,12 @@ export default function CallPage() {
   }, [hasRemoteParticipant]);
 
   useEffect(() => {
+    if (status !== "call.status.connected") return;
+    if (connectedAt !== null) return;
+    setConnectedAt(Date.now());
+  }, [connectedAt, setConnectedAt, status]);
+
+  useEffect(() => {
     if (isSelfViewHidden) return;
     const stream = localStreamRef.current;
     localMediaController.syncLocalVideoElementWithStream(stream);
@@ -832,7 +843,9 @@ export default function CallPage() {
         });
 
         if (!isMounted) return;
-        await localMediaController.ensureLocalMediaStarted();
+        await withCameraInitializationLoader(() =>
+          localMediaController.ensureLocalMediaStarted(),
+        );
       } catch (error) {
         if (!isMounted) return;
 
@@ -851,6 +864,32 @@ export default function CallPage() {
 
   async function onServerMessage(message: ServerSignalMessage, room: string) {
     await callSessionController.handleServerMessage(message, room);
+
+    if (message.type === "peer-left") {
+      completeCallForAllParticipants();
+    }
+  }
+
+  function getCurrentCallDurationMs(endedTimestamp: number): number {
+    if (connectedAt === null) return 0;
+    return Math.max(0, endedTimestamp - connectedAt);
+  }
+
+  function completeCallForAllParticipants() {
+    if (hasCompletedCallRef.current) return;
+    hasCompletedCallRef.current = true;
+
+    const endedTimestamp = Date.now();
+    const durationMs = getCurrentCallDurationMs(endedTimestamp);
+
+    setEndedAt(endedTimestamp);
+    setStatus("call.status.ended");
+    leaveCall(validRoomId);
+
+    navigate(`/call/${validRoomId}/completed`, {
+      replace: true,
+      state: { durationMs },
+    });
   }
 
   async function copyInviteLink() {
@@ -880,6 +919,26 @@ export default function CallPage() {
     await copyInviteLink();
   }
 
+  async function withCameraInitializationLoader<T>(
+    action: () => Promise<T>,
+  ): Promise<T> {
+    cameraInitRequestsRef.current += 1;
+    setIsCameraInitializing(true);
+
+    try {
+      return await action();
+    } finally {
+      cameraInitRequestsRef.current = Math.max(
+        0,
+        cameraInitRequestsRef.current - 1,
+      );
+
+      if (cameraInitRequestsRef.current === 0) {
+        setIsCameraInitializing(false);
+      }
+    }
+  }
+
   async function switchCamera() {
     if (isSwitchingCamera) return;
 
@@ -889,7 +948,9 @@ export default function CallPage() {
     setIsSwitchingCamera(true);
     setStatus("call.status.connecting");
 
-    const started = await localMediaController.startLocalMedia(nextMode);
+    const started = await withCameraInitializationLoader(() =>
+      localMediaController.startLocalMedia(nextMode),
+    );
 
     if (started) {
       setCameraMode(nextMode);
@@ -987,7 +1048,9 @@ export default function CallPage() {
     const nextVideoOff = !isVideoOff;
 
     if (!localMediaController.hasVideoTrack()) {
-      const started = await localMediaController.startLocalMedia(cameraMode);
+      const started = await withCameraInitializationLoader(() =>
+        localMediaController.startLocalMedia(cameraMode),
+      );
       if (started) {
         setIsVideoOff(false);
       }
@@ -1196,8 +1259,7 @@ export default function CallPage() {
   );
 
   const endCall = () => {
-    leaveCall(validRoomId);
-    navigate("/");
+    completeCallForAllParticipants();
   };
 
   return (
@@ -1261,6 +1323,8 @@ export default function CallPage() {
           onLocalVideoMetadata={updateLocalAspectRatioFromElement}
           isMuted={isMuted}
           isVideoOff={isVideoOff}
+          isCameraInitializing={isCameraInitializing}
+          cameraInitializingLabel={t("call.status.preparingCamera")}
           onSwitchCamera={async () => {
             markSelfViewInteraction();
             await switchCamera();
