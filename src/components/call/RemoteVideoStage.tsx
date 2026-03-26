@@ -1,4 +1,5 @@
 import type { MutableRefObject, TouchEventHandler } from "react";
+import clsx from "clsx";
 import type { RemoteViewMode } from "../../store/callUiStore";
 
 type RemoteVideoStageProps = {
@@ -28,7 +29,7 @@ export default function RemoteVideoStage({
 }: RemoteVideoStageProps) {
   return (
     <div
-      className="remote-video-gesture-layer"
+      className="h-dvh w-full touch-none overflow-hidden"
       ref={remoteGestureLayerRef}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
@@ -39,7 +40,11 @@ export default function RemoteVideoStage({
         ref={remoteVideoRef}
         autoPlay
         playsInline
-        className={`remote-video ${remoteViewMode === "fit" ? "is-fit" : ""} ${isPinchingRemote || isPanningRemote ? "is-pinching" : ""}`}
+        className={clsx(
+          "h-dvh w-full origin-center bg-[#07080d] transition-[transform,object-fit] duration-200 ease-out",
+          remoteViewMode === "fit" ? "object-contain" : "object-cover",
+          (isPinchingRemote || isPanningRemote) && "transition-none",
+        )}
         style={{
           transform: `translate3d(${remotePanOffset.x}px, ${remotePanOffset.y}px, 0) scale(${remoteZoomScale})`,
         }}

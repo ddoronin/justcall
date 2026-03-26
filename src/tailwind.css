@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: #f5f7ff;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    color: #f5f7ff;
+    background: radial-gradient(circle at top, #1f3f35 0%, #0f131f 55%, #090b12 100%);
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(135deg, #ffffff2c, #ffffff14);
+    border: 1px solid #ffffff33;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 8px 24px #04050b66;
+  }
+
+  .btn-interactive {
+    @apply transition duration-200 ease-out motion-reduce:transition-none;
+    @apply hover:brightness-110 active:brightness-95;
+    @apply disabled:brightness-100 disabled:opacity-65 disabled:cursor-default;
+  }
+}

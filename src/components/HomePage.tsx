@@ -36,12 +36,17 @@ export default function HomePage() {
   };
 
   return (
-    <main className="home-page">
-      <div className="card glass">
-        <h1>{t("home.title")}</h1>
-        <p>{t("home.subtitle")}</p>
-        <button className="primary home-start-button" onClick={startCall}>
-          <Video className="home-start-icon" aria-hidden="true" />
+    <main className="grid min-h-dvh place-items-center p-6 max-[760px]:p-4">
+      <div className="glass w-full max-w-[440px] rounded-[24px] p-7 text-center max-[760px]:rounded-[20px] max-[760px]:p-[22px]">
+        <h1 className="mb-[10px] text-[32px] tracking-[0.3px]">
+          {t("home.title")}
+        </h1>
+        <p className="m-0 whitespace-nowrap">{t("home.subtitle")}</p>
+        <button
+          className="btn-interactive mt-[18px] inline-flex min-h-[52px] w-full items-center justify-center gap-[10px] rounded-[14px] border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 font-bold text-white"
+          onClick={startCall}
+        >
+          <Video className="h-5 w-5" aria-hidden="true" />
           <span>{t("home.startCall")}</span>
         </button>
       </div>

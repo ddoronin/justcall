@@ -11,6 +11,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
+import clsx from "clsx";
 import { useI18n } from "../i18n/provider";
 
 type SelfViewContainerProps = {
@@ -73,11 +74,11 @@ export default function SelfViewContainer({
   if (isSelfViewHidden) {
     return (
       <button
-        className="glass icon-button self-view-restore"
+        className="btn-interactive glass absolute right-3.5 top-[max(84px,calc(env(safe-area-inset-top)+68px))] z-10 inline-flex h-[42px] w-[42px] items-center justify-center rounded-full p-0 max-[760px]:right-3 max-[760px]:top-[max(80px,calc(env(safe-area-inset-top)+64px))]"
         onClick={restoreSelfView}
         aria-label={t("call.selfView.showAria")}
       >
-        <Eye className="control-icon" aria-hidden="true" />
+        <Eye className="h-[18px] w-[18px]" aria-hidden="true" />
       </button>
     );
   }
@@ -85,7 +86,13 @@ export default function SelfViewContainer({
   return (
     <div
       ref={selfViewRef}
-      className={`local-preview ${isSelfViewExpanded ? "is-expanded" : ""} ${isDraggingSelfView ? "is-dragging" : ""} ${isSelfViewIdle ? "is-idle" : ""}`}
+      className={clsx(
+        "absolute z-[9] select-none touch-none overflow-hidden rounded-[22px] border border-white/20 bg-[linear-gradient(145deg,#ffffff2a,#ffffff14)] shadow-[0_8px_24px_#04050b52] backdrop-blur-[20px] transition-[left,top,width,opacity,transform,box-shadow] duration-300 ease-out cursor-grab max-[760px]:rounded-[20px]",
+        isSelfViewExpanded && "z-[12]",
+        isDraggingSelfView &&
+          "cursor-grabbing shadow-[0_14px_30px_#04050b76] transition-none",
+        isSelfViewIdle && "scale-95 opacity-70",
+      )}
       style={{
         aspectRatio: `${localAspectRatio}`,
         width: `${selfViewWidth}px`,
@@ -113,32 +120,38 @@ export default function SelfViewContainer({
         autoPlay
         playsInline
         muted
-        className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
+        className={clsx(
+          "h-full w-full rounded-[inherit] border-0 bg-[#121316] object-cover shadow-none",
+          cameraMode === "front" && "-scale-x-100",
+        )}
         onLoadedMetadata={(event) => onLocalVideoMetadata(event.currentTarget)}
       />
 
-      <div className="self-view-status" aria-hidden="true">
+      <div
+        className="pointer-events-none absolute left-2 top-2 z-[2] inline-flex items-center gap-1.5"
+        aria-hidden="true"
+      >
         {isMuted ? (
-          <span className="self-view-badge">
-            <MicOff className="self-view-badge-icon" />
+          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border border-white/15 bg-[#10131cc4]">
+            <MicOff className="h-[13px] w-[13px]" />
           </span>
         ) : null}
         {isVideoOff ? (
-          <span className="self-view-badge">
-            <VideoOff className="self-view-badge-icon" />
+          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border border-white/15 bg-[#10131cc4]">
+            <VideoOff className="h-[13px] w-[13px]" />
           </span>
         ) : null}
         {cameraMode === "back" ? (
-          <span className="self-view-badge">
-            <SwitchCamera className="self-view-badge-icon" />
+          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border border-white/15 bg-[#10131cc4]">
+            <SwitchCamera className="h-[13px] w-[13px]" />
           </span>
         ) : null}
       </div>
 
       {isSelfViewExpanded ? (
-        <div className="self-view-actions glass">
+        <div className="glass absolute bottom-2.5 left-1/2 z-[2] inline-flex -translate-x-1/2 items-center gap-2 rounded-full p-1.5">
           <button
-            className="glass icon-button self-view-action"
+            className="btn-interactive glass inline-flex h-9 w-9 items-center justify-center rounded-full p-0 max-[760px]:h-[34px] max-[760px]:w-[34px]"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -146,10 +159,10 @@ export default function SelfViewContainer({
             }}
             aria-label={t("call.controls.flipAria")}
           >
-            <SwitchCamera className="control-icon" aria-hidden="true" />
+            <SwitchCamera className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
           <button
-            className="glass icon-button self-view-action"
+            className="btn-interactive glass inline-flex h-9 w-9 items-center justify-center rounded-full p-0 max-[760px]:h-[34px] max-[760px]:w-[34px]"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -162,13 +175,13 @@ export default function SelfViewContainer({
             }
           >
             {isVideoOff ? (
-              <Video className="control-icon" aria-hidden="true" />
+              <Video className="h-[18px] w-[18px]" aria-hidden="true" />
             ) : (
-              <VideoOff className="control-icon" aria-hidden="true" />
+              <VideoOff className="h-[18px] w-[18px]" aria-hidden="true" />
             )}
           </button>
           <button
-            className="glass icon-button self-view-action"
+            className="btn-interactive glass inline-flex h-9 w-9 items-center justify-center rounded-full p-0 max-[760px]:h-[34px] max-[760px]:w-[34px]"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -176,7 +189,7 @@ export default function SelfViewContainer({
             }}
             aria-label={t("call.selfView.hideAria")}
           >
-            <Minimize2 className="control-icon" aria-hidden="true" />
+            <Minimize2 className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
         </div>
       ) : null}

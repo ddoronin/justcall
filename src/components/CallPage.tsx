@@ -1201,8 +1201,8 @@ export default function CallPage() {
   };
 
   return (
-    <main className="call-page">
-      <section className="video-shell">
+    <main className="relative min-h-dvh">
+      <section className="relative min-h-dvh overflow-hidden bg-black">
         <RemoteVideoStage
           remoteGestureLayerRef={remoteGestureLayerRef}
           remoteVideoRef={remoteVideoRef}
