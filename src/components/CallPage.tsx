@@ -9,10 +9,25 @@ import {
 import type { CallStatus, ServerSignalMessage } from "../types/signaling";
 
 const DEFAULT_ERROR = "Something went wrong. Please refresh and try again.";
+type CameraMode = "front" | "back";
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) return false;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function getVideoConstraintCandidates(
+  mode: CameraMode,
+): Array<boolean | MediaTrackConstraints> {
+  if (mode === "back") {
+    return [
+      { facingMode: { exact: "environment" } },
+      { facingMode: "environment" },
+      true,
+    ];
+  }
+
+  return [{ facingMode: "user" }, true];
 }
 
 export default function CallPage() {
@@ -36,11 +51,22 @@ export default function CallPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isInitiator, setIsInitiator] = useState(false);
   const [canRetryMedia, setCanRetryMedia] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("front");
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
 
-  const inviteLink = useMemo(() => window.location.href, []);
   const validRoomId = roomId ?? "";
+  const inviteLink = useMemo(
+    () => `${window.location.origin}/call/${validRoomId}`,
+    [validRoomId],
+  );
 
-  async function attachLocalMedia() {
+  function stopStream(stream: MediaStream | null) {
+    stream?.getTracks().forEach((track) => track.stop());
+  }
+
+  async function attachLocalMedia(mode: CameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new DOMException(
         "This browser does not support camera access",
@@ -48,17 +74,27 @@ export default function CallPage() {
       );
     }
 
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-    } catch {
-      return await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      });
+    let lastError: unknown;
+
+    for (const videoConstraint of getVideoConstraintCandidates(mode)) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: videoConstraint,
+          audio: true,
+        });
+      } catch {
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            video: videoConstraint,
+            audio: false,
+          });
+        } catch (error) {
+          lastError = error;
+        }
+      }
     }
+
+    throw lastError;
   }
 
   function getMediaErrorMessage(error: unknown): string {
@@ -80,30 +116,33 @@ export default function CallPage() {
     return "Could not start camera/microphone. Click Enable Camera to try again.";
   }
 
-  function addLocalTracksToPeerConnection(
+  function syncLocalTracksToPeerConnection(
     pc: RTCPeerConnection,
     stream: MediaStream,
   ) {
-    const existingTrackIds = new Set(
-      pc
-        .getSenders()
-        .map((sender) => sender.track?.id)
-        .filter((id): id is string => Boolean(id)),
-    );
-
     stream.getTracks().forEach((track) => {
-      if (!existingTrackIds.has(track.id)) {
+      const sender = pc
+        .getSenders()
+        .find((existingSender) => existingSender.track?.kind === track.kind);
+
+      if (sender) {
+        void sender.replaceTrack(track);
+      } else {
         pc.addTrack(track, stream);
       }
     });
   }
 
-  async function startLocalMedia(): Promise<boolean> {
+  async function startLocalMedia(
+    mode: CameraMode = cameraMode,
+  ): Promise<boolean> {
     const pc = pcRef.current;
     if (!pc) return false;
 
     try {
-      const stream = await attachLocalMedia();
+      const stream = await attachLocalMedia(mode);
+      const previousStream = localStreamRef.current;
+
       localStreamRef.current = stream;
       setCanRetryMedia(false);
       setErrorMessage(null);
@@ -115,7 +154,12 @@ export default function CallPage() {
         });
       }
 
-      addLocalTracksToPeerConnection(pc, stream);
+      syncLocalTracksToPeerConnection(pc, stream);
+
+      if (previousStream && previousStream.id !== stream.id) {
+        stopStream(previousStream);
+      }
+
       return true;
     } catch (error) {
       setCanRetryMedia(true);
@@ -135,6 +179,16 @@ export default function CallPage() {
 
     return mediaStartPromiseRef.current;
   }
+
+  useEffect(() => {
+    if (!shareNotice) return;
+
+    const timer = window.setTimeout(() => {
+      setShareNotice(null);
+    }, 2600);
+
+    return () => window.clearTimeout(timer);
+  }, [shareNotice]);
 
   useEffect(() => {
     if (!validRoomId) {
@@ -423,12 +477,56 @@ export default function CallPage() {
 
     const stream = localStreamRef.current;
     if (stream) {
-      addLocalTracksToPeerConnection(fresh, stream);
+      syncLocalTracksToPeerConnection(fresh, stream);
     }
   }
 
-  function copyInviteLink() {
-    void navigator.clipboard.writeText(inviteLink);
+  async function copyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setShareNotice("Invite link copied.");
+    } catch {
+      setShareNotice("Could not copy link. Please copy it manually.");
+    }
+  }
+
+  async function shareInviteLink() {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Join my JustCall",
+          text: "Join my video call",
+          url: inviteLink,
+        });
+        setShareNotice("Share opened.");
+        return;
+      } catch {
+        // fallback to clipboard below
+      }
+    }
+
+    await copyInviteLink();
+  }
+
+  async function switchCamera() {
+    if (isSwitchingCamera) return;
+
+    const nextMode: CameraMode = cameraMode === "front" ? "back" : "front";
+    const previousStatus = status;
+
+    setIsSwitchingCamera(true);
+    setStatus("Connecting call...");
+
+    const started = await startLocalMedia(nextMode);
+
+    if (started) {
+      setCameraMode(nextMode);
+      setStatus(previousStatus);
+    } else {
+      setStatus(previousStatus);
+    }
+
+    setIsSwitchingCamera(false);
   }
 
   function leaveCall(room: string) {
@@ -441,7 +539,7 @@ export default function CallPage() {
     pcRef.current?.close();
     pcRef.current = null;
 
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    stopStream(localStreamRef.current);
     localStreamRef.current = null;
   }
 
@@ -459,32 +557,88 @@ export default function CallPage() {
           playsInline
           className="remote-video"
         />
+
+        <div className="top-overlay">
+          <div className="glass status-pill">{status}</div>
+          <button
+            className="glass icon-button"
+            onClick={() => setShowInviteModal(true)}
+          >
+            Invite
+          </button>
+        </div>
+
+        {errorMessage ? (
+          <p className="glass error-banner" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {shareNotice ? (
+          <p className="glass share-notice">{shareNotice}</p>
+        ) : null}
+
         <video
           ref={localVideoRef}
           autoPlay
           playsInline
           muted
-          className="local-video"
+          className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
         />
-      </section>
 
-      <section className="controls">
-        <p className="status">{status}</p>
-        {errorMessage ? <p className="error">{errorMessage}</p> : null}
+        <div className="controls-float">
+          <button
+            className="glass icon-button"
+            onClick={() => void switchCamera()}
+            disabled={isSwitchingCamera}
+          >
+            {isSwitchingCamera ? "Switching..." : "Flip"}
+          </button>
 
-        <div className="invite-row">
-          <input value={inviteLink} readOnly />
-          <button onClick={copyInviteLink}>Copy Link</button>
+          {canRetryMedia ? (
+            <button
+              className="glass icon-button"
+              onClick={() => void startLocalMedia()}
+            >
+              Enable Camera
+            </button>
+          ) : null}
+
+          <button className="danger" onClick={endCall}>
+            End
+          </button>
         </div>
-
-        {canRetryMedia ? (
-          <button onClick={() => void startLocalMedia()}>Enable Camera</button>
-        ) : null}
-
-        <button className="danger" onClick={endCall}>
-          End Call
-        </button>
       </section>
+
+      {showInviteModal ? (
+        <section
+          className="modal-backdrop"
+          onClick={() => setShowInviteModal(false)}
+        >
+          <div
+            className="modal glass"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>Share this call</h2>
+            <p>Send this link so they can join instantly.</p>
+            <input value={inviteLink} readOnly />
+            <div className="modal-actions">
+              <button
+                className="glass icon-button"
+                onClick={() => void copyInviteLink()}
+              >
+                Copy
+              </button>
+              <button
+                className="primary"
+                onClick={() => void shareInviteLink()}
+              >
+                Share
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }
