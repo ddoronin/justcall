@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Video } from "lucide-react";
+import { useI18n } from "../i18n/provider";
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [joinValue, setJoinValue] = useState("");
 
   const startCall = () => {
@@ -36,11 +38,11 @@ export default function HomePage() {
   return (
     <main className="home-page">
       <div className="card glass">
-        <h1>JustCall</h1>
-        <p>Simple video calls, just a tap away.</p>
+        <h1>{t("home.title")}</h1>
+        <p>{t("home.subtitle")}</p>
         <button className="primary home-start-button" onClick={startCall}>
           <Video className="home-start-icon" aria-hidden="true" />
-          <span>Start Video Call</span>
+          <span>{t("home.startCall")}</span>
         </button>
       </div>
     </main>

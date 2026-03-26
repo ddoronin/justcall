@@ -18,9 +18,11 @@ import {
   resolveIceServers,
   sendSignal,
 } from "../lib/signaling";
+import { useI18n } from "../i18n/provider";
+import type { TranslationKey } from "../i18n/types";
 import type { CallStatus, ServerSignalMessage } from "../types/signaling";
 
-const DEFAULT_ERROR = "Something went wrong. Please refresh and try again.";
+const DEFAULT_ERROR_KEY: TranslationKey = "call.error.default";
 type CameraMode = "front" | "back";
 type RemoteViewMode = "fill" | "fit";
 
@@ -46,6 +48,7 @@ function getVideoConstraintCandidates(
 export default function CallPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -66,7 +69,9 @@ export default function CallPage() {
   const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
   const panStartOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const [status, setStatus] = useState<CallStatus>("Preparing your camera...");
+  const [status, setStatus] = useState<CallStatus>(
+    "call.status.preparingCamera",
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isInitiator, setIsInitiator] = useState(false);
   const [canRetryMedia, setCanRetryMedia] = useState(false);
@@ -146,7 +151,7 @@ export default function CallPage() {
   async function attachLocalMedia(mode: CameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new DOMException(
-        "This browser does not support camera access",
+        t("call.error.media.unsupportedBrowser"),
         "NotSupportedError",
       );
     }
@@ -174,23 +179,23 @@ export default function CallPage() {
     throw lastError;
   }
 
-  function getMediaErrorMessage(error: unknown): string {
+  function getMediaErrorMessageKey(error: unknown): TranslationKey {
     const mediaError = error as DOMException;
 
     if (mediaError?.name === "NotAllowedError") {
-      return "Video/microphone permission was denied. Click Enable Video below after allowing access in browser settings.";
+      return "call.error.media.notAllowed";
     }
     if (mediaError?.name === "NotFoundError") {
-      return "No camera was found on this device.";
+      return "call.error.media.notFound";
     }
     if (mediaError?.name === "NotReadableError") {
-      return "Video is busy in another app. Close other apps using camera and try again.";
+      return "call.error.media.notReadable";
     }
     if (mediaError?.name === "SecurityError") {
-      return "Video is blocked by browser security settings.";
+      return "call.error.media.security";
     }
 
-    return "Could not start camera/microphone. Click Enable Video to try again.";
+    return "call.error.media.startFailed";
   }
 
   function syncLocalTracksToPeerConnection(
@@ -256,7 +261,7 @@ export default function CallPage() {
       return true;
     } catch (error) {
       setCanRetryMedia(true);
-      setErrorMessage(getMediaErrorMessage(error));
+      setErrorMessage(t(getMediaErrorMessageKey(error)));
       return false;
     }
   }
@@ -306,7 +311,7 @@ export default function CallPage() {
 
     let isMounted = true;
     setHasRemoteParticipant(false);
-    setStatus("Joining call...");
+    setStatus("call.status.joining");
 
     const setup = async () => {
       try {
@@ -324,21 +329,19 @@ export default function CallPage() {
 
         socket.addEventListener("open", () => {
           setErrorMessage(null);
-          setStatus("Waiting someone to join");
+          setStatus("call.status.waitingParticipant");
           sendSignal(socket, { type: "join-room", roomId: validRoomId });
         });
 
         socket.addEventListener("error", () => {
           if (!isMounted) return;
-          setStatus("Call ended");
-          setErrorMessage(
-            "Could not reach the call server. Please refresh and try again.",
-          );
+          setStatus("call.status.ended");
+          setErrorMessage(t("call.error.serverUnreachable"));
         });
 
         socket.addEventListener("close", () => {
           if (isMounted) {
-            setStatus("Call ended");
+            setStatus("call.status.ended");
           }
         });
 
@@ -347,7 +350,7 @@ export default function CallPage() {
       } catch (error) {
         if (!isMounted) return;
 
-        setErrorMessage(DEFAULT_ERROR);
+        setErrorMessage(t(DEFAULT_ERROR_KEY));
       }
     };
 
@@ -369,7 +372,9 @@ export default function CallPage() {
         const initiator = Boolean(message.isInitiator);
         isInitiatorRef.current = initiator;
         setIsInitiator(initiator);
-        setStatus(initiator ? "Waiting someone to join" : "Joining call...");
+        setStatus(
+          initiator ? "call.status.waitingParticipant" : "call.status.joining",
+        );
         if (initiator && !hasAutoOpenedInviteRef.current) {
           hasAutoOpenedInviteRef.current = true;
           setShowInviteModal(true);
@@ -379,14 +384,14 @@ export default function CallPage() {
       case "peer-joined": {
         setHasRemoteParticipant(true);
         if (!isInitiatorRef.current) break;
-        setStatus("Connecting call...");
+        setStatus("call.status.connecting");
         await ensureLocalMediaStarted();
         await createAndSendOffer(room);
         break;
       }
       case "offer": {
         setHasRemoteParticipant(true);
-        setStatus("Connecting call...");
+        setStatus("call.status.connecting");
         setErrorMessage(null);
 
         await ensureLocalMediaStarted();
@@ -425,7 +430,7 @@ export default function CallPage() {
         setRemotePanOffset({ x: 0, y: 0 });
         clearDisconnectTimer();
         restartAttemptsRef.current = 0;
-        setStatus("Waiting someone to join");
+        setStatus("call.status.waitingParticipant");
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null;
         }
@@ -433,11 +438,11 @@ export default function CallPage() {
         break;
       }
       case "room-full": {
-        setErrorMessage("This call is full. Please ask for a new call link.");
+        setErrorMessage(t("call.error.roomFull"));
         break;
       }
       case "error": {
-        setErrorMessage(message.message || DEFAULT_ERROR);
+        setErrorMessage(message.message || t(DEFAULT_ERROR_KEY));
         break;
       }
     }
@@ -460,9 +465,7 @@ export default function CallPage() {
       pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
-      setErrorMessage(
-        "Using fallback network settings. If calls fail, check ICE/TURN env values.",
-      );
+      setErrorMessage(t("call.error.fallbackNetwork"));
     }
 
     pc.ontrack = (event) => {
@@ -487,10 +490,10 @@ export default function CallPage() {
         clearDisconnectTimer();
         restartAttemptsRef.current = 0;
         setErrorMessage(null);
-        setStatus("Call connected");
+        setStatus("call.status.connected");
       }
       if (pc.connectionState === "disconnected") {
-        setStatus("Connecting call...");
+        setStatus("call.status.connecting");
         scheduleDisconnectRecovery(room);
       }
       if (pc.connectionState === "failed") {
@@ -498,7 +501,7 @@ export default function CallPage() {
       }
       if (pc.connectionState === "closed") {
         clearDisconnectTimer();
-        setStatus("Call ended");
+        setStatus("call.status.ended");
       }
     };
 
@@ -541,19 +544,17 @@ export default function CallPage() {
     if (!pc || pc.signalingState === "closed") return;
 
     if (!isInitiatorRef.current) {
-      setErrorMessage("Connection is unstable. Waiting for call recovery...");
+      setErrorMessage(t("call.error.unstableConnection"));
       return;
     }
 
     if (restartAttemptsRef.current >= 2) {
-      setErrorMessage(
-        "Connection lost. Your network may block direct calls. Please refresh and try again.",
-      );
+      setErrorMessage(t("call.error.connectionLost"));
       return;
     }
 
     restartAttemptsRef.current += 1;
-    setStatus("Connecting call...");
+    setStatus("call.status.connecting");
 
     try {
       const restartOffer = await pc.createOffer({ iceRestart: true });
@@ -565,9 +566,7 @@ export default function CallPage() {
         sdp: restartOffer,
       });
     } catch {
-      setErrorMessage(
-        "Connection lost. Your network may block direct calls. Please refresh and try again.",
-      );
+      setErrorMessage(t("call.error.connectionLost"));
     }
   }
 
@@ -604,9 +603,9 @@ export default function CallPage() {
   async function copyInviteLink() {
     try {
       await navigator.clipboard.writeText(inviteLink);
-      setShareNotice("Invite link copied.");
+      setShareNotice(t("call.share.inviteCopied"));
     } catch {
-      setShareNotice("Could not copy link. Please copy it manually.");
+      setShareNotice(t("call.share.copyFailed"));
     }
   }
 
@@ -614,11 +613,11 @@ export default function CallPage() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Join my JustCall",
-          text: "Join my video call",
+          title: t("call.share.title"),
+          text: t("call.share.text"),
           url: inviteLink,
         });
-        setShareNotice("Share opened.");
+        setShareNotice(t("call.share.opened"));
         return;
       } catch {
         // fallback to clipboard below
@@ -635,7 +634,7 @@ export default function CallPage() {
     const previousStatus = status;
 
     setIsSwitchingCamera(true);
-    setStatus("Connecting call...");
+    setStatus("call.status.connecting");
 
     const started = await startLocalMedia(nextMode);
 
@@ -806,7 +805,7 @@ export default function CallPage() {
         </div>
 
         <div className="top-overlay">
-          <div className="glass status-pill">{status}</div>
+          <div className="glass status-pill">{t(status)}</div>
         </div>
 
         {errorMessage ? (
@@ -825,10 +824,10 @@ export default function CallPage() {
               <button
                 className="glass primary invite-center-button"
                 onClick={() => void shareInviteLink()}
-                aria-label="Share invite link"
+                aria-label={t("call.invite.shareAria")}
               >
                 <Share2 className="invite-cta-icon" aria-hidden="true" />
-                <span>Share call invite</span>
+                <span>{t("call.invite.shareCta")}</span>
               </button>
 
               <div className="invite-link-row">
@@ -838,7 +837,7 @@ export default function CallPage() {
                 <button
                   className="glass icon-button invite-copy-button"
                   onClick={() => void copyInviteLink()}
-                  aria-label="Copy invite link"
+                  aria-label={t("call.invite.copyAria")}
                 >
                   <Copy className="invite-copy-icon" aria-hidden="true" />
                 </button>
@@ -868,8 +867,8 @@ export default function CallPage() {
           onClick={toggleRemoteViewMode}
           aria-label={
             remoteViewMode === "fill"
-              ? "Fit video into screen"
-              : "Fill screen with video"
+              ? t("call.view.fitAria")
+              : t("call.view.fillAria")
           }
         >
           {remoteViewMode === "fill" ? (
@@ -878,7 +877,9 @@ export default function CallPage() {
             <Maximize2 className="control-icon" aria-hidden="true" />
           )}
           <span>
-            {remoteViewMode === "fill" ? "Fit to screen" : "Fill screen"}
+            {remoteViewMode === "fill"
+              ? t("call.view.fitLabel")
+              : t("call.view.fillLabel")}
           </span>
         </button>
 
@@ -887,7 +888,11 @@ export default function CallPage() {
             className={`glass icon-button control-button ${isVideoOff ? "is-active" : ""}`}
             onClick={() => void toggleVideo()}
             aria-pressed={isVideoOff}
-            aria-label={isVideoOff ? "Turn camera on" : "Turn camera off"}
+            aria-label={
+              isVideoOff
+                ? t("call.controls.videoOnAria")
+                : t("call.controls.videoOffAria")
+            }
           >
             {isVideoOff ? (
               <VideoOff className="control-icon" aria-hidden="true" />
@@ -895,40 +900,52 @@ export default function CallPage() {
               <Video className="control-icon" aria-hidden="true" />
             )}
             <span className="control-label">
-              {isVideoOff ? "Video On" : "Video Off"}
+              {isVideoOff
+                ? t("call.controls.videoOnLabel")
+                : t("call.controls.videoOffLabel")}
             </span>
           </button>
           <button
             className={`glass icon-button control-button ${isMuted ? "is-active" : ""}`}
             onClick={() => void toggleMute()}
             aria-pressed={isMuted}
-            aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+            aria-label={
+              isMuted
+                ? t("call.controls.unmuteAria")
+                : t("call.controls.muteAria")
+            }
           >
             {isMuted ? (
               <MicOff className="control-icon" aria-hidden="true" />
             ) : (
               <Mic className="control-icon" aria-hidden="true" />
             )}
-            <span className="control-label">{isMuted ? "Unmute" : "Mute"}</span>
+            <span className="control-label">
+              {isMuted
+                ? t("call.controls.unmuteLabel")
+                : t("call.controls.muteLabel")}
+            </span>
           </button>
           <button
             className="glass icon-button control-button"
             onClick={() => void switchCamera()}
             disabled={isSwitchingCamera}
-            aria-label="Flip camera"
+            aria-label={t("call.controls.flipAria")}
           >
             <SwitchCamera className="control-icon" aria-hidden="true" />
             <span className="control-label">
-              {isSwitchingCamera ? "Flipping..." : "Flip"}
+              {isSwitchingCamera
+                ? t("call.controls.flippingLabel")
+                : t("call.controls.flipLabel")}
             </span>
           </button>
           <button
             className="glass danger icon-button control-button end-button"
             onClick={endCall}
-            aria-label="End call"
+            aria-label={t("call.controls.endAria")}
           >
             <Phone className="control-icon end-call-icon" aria-hidden="true" />
-            <span className="control-label">End</span>
+            <span className="control-label">{t("call.controls.endLabel")}</span>
           </button>
         </div>
       </section>
@@ -942,21 +959,21 @@ export default function CallPage() {
             className="modal glass"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>Share this call</h2>
-            <p>Send this link so they can join instantly.</p>
+            <h2>{t("call.modal.title")}</h2>
+            <p>{t("call.modal.subtitle")}</p>
             <input value={inviteLink} readOnly />
             <div className="modal-actions">
               <button
                 className="glass icon-button"
                 onClick={() => void copyInviteLink()}
               >
-                Copy
+                {t("call.modal.copyButton")}
               </button>
               <button
                 className="glass primary share-button"
                 onClick={() => void shareInviteLink()}
               >
-                Share
+                {t("call.modal.shareButton")}
               </button>
             </div>
           </div>

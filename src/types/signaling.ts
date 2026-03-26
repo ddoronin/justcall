@@ -21,9 +21,9 @@ export type ServerSignalMessage =
   | { type: "error"; message: string };
 
 export type CallStatus =
-  | "Preparing your camera..."
-  | "Waiting someone to join"
-  | "Joining call..."
-  | "Connecting call..."
-  | "Call connected"
-  | "Call ended";
+  | "call.status.preparingCamera"
+  | "call.status.waitingParticipant"
+  | "call.status.joining"
+  | "call.status.connecting"
+  | "call.status.connected"
+  | "call.status.ended";
