@@ -125,16 +125,33 @@ p {
   background: #000;
 }
 
+.remote-video-gesture-layer {
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: none;
+}
+
 .remote-video {
   width: 100%;
   height: 100dvh;
   object-fit: cover;
   background: #07080d;
+  transform-origin: center;
+  transition: transform 0.2s ease, object-fit 0.18s ease;
+}
+
+.remote-video.is-fit {
+  object-fit: contain;
+}
+
+.remote-video.is-pinching {
+  transition: none;
 }
 
 .local-video {
   width: 100%;
-  aspect-ratio: 16/9;
+  height: 100%;
   border-radius: 14px;
   object-fit: cover;
   background: #121316;
@@ -147,6 +164,8 @@ p {
   right: 16px;
   top: 86px;
   width: min(34vw, 180px);
+  aspect-ratio: 16/9;
+  max-height: 42dvh;
 }
 
 .mirrored {
@@ -185,6 +204,21 @@ p {
   width: min(190px, 28vw);
   padding: 10px;
   border-radius: 18px;
+}
+
+.view-mode-toggle {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  min-height: 46px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  z-index: 6;
 }
 
 .error-banner,
@@ -394,6 +428,7 @@ p {
     width: 132px;
     top: max(84px, calc(env(safe-area-inset-top) + 68px));
     right: 12px;
+    max-height: 36dvh;
   }
 
   .controls-float {
@@ -421,6 +456,12 @@ p {
 
   .share-notice {
     bottom: max(178px, calc(env(safe-area-inset-bottom) + 166px));
+  }
+
+  .view-mode-toggle {
+    bottom: max(98px, calc(env(safe-area-inset-bottom) + 86px));
+    min-height: 44px;
+    padding: 8px 12px;
   }
 
   .control-label {

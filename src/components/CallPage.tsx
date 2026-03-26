@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import {
   Camera,
   CameraOff,
   Copy,
   FlipHorizontal,
+  Maximize2,
   Mic,
   MicOff,
+  Minimize2,
   PhoneOff,
   Share2,
 } from "lucide-react";
@@ -20,6 +22,7 @@ import type { CallStatus, ServerSignalMessage } from "../types/signaling";
 
 const DEFAULT_ERROR = "Something went wrong. Please refresh and try again.";
 type CameraMode = "front" | "back";
+type RemoteViewMode = "fill" | "fit";
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) return false;
@@ -57,6 +60,8 @@ export default function CallPage() {
   const hasAutoOpenedInviteRef = useRef(false);
   const disconnectTimerRef = useRef<number | null>(null);
   const restartAttemptsRef = useRef(0);
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef(1);
 
   const [status, setStatus] = useState<CallStatus>("Preparing your camera...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,6 +74,10 @@ export default function CallPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [hasRemoteParticipant, setHasRemoteParticipant] = useState(false);
+  const [remoteViewMode, setRemoteViewMode] = useState<RemoteViewMode>("fill");
+  const [remoteZoomScale, setRemoteZoomScale] = useState(1);
+  const [isPinchingRemote, setIsPinchingRemote] = useState(false);
+  const [localAspectRatio, setLocalAspectRatio] = useState(16 / 9);
 
   const validRoomId = roomId ?? "";
   const inviteLink = useMemo(
@@ -78,6 +87,33 @@ export default function CallPage() {
 
   function stopStream(stream: MediaStream | null) {
     stream?.getTracks().forEach((track) => track.stop());
+  }
+
+  function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function getTouchDistance(touches: {
+    length: number;
+    [index: number]: { clientX: number; clientY: number };
+  }): number {
+    if (touches.length < 2) return 0;
+
+    const first = touches[0];
+    const second = touches[1];
+    return Math.hypot(
+      second.clientX - first.clientX,
+      second.clientY - first.clientY,
+    );
+  }
+
+  function updateLocalAspectRatioFromElement(video: HTMLVideoElement | null) {
+    if (!video || !video.videoWidth || !video.videoHeight) return;
+
+    const ratio = video.videoWidth / video.videoHeight;
+    if (Number.isFinite(ratio) && ratio > 0) {
+      setLocalAspectRatio(ratio);
+    }
   }
 
   async function attachLocalMedia(mode: CameraMode) {
@@ -181,6 +217,7 @@ export default function CallPage() {
         void localVideoRef.current.play().catch(() => {
           // ignore autoplay promise rejections
         });
+        updateLocalAspectRatioFromElement(localVideoRef.current);
       }
 
       syncLocalTracksToPeerConnection(pc, stream);
@@ -347,6 +384,7 @@ export default function CallPage() {
       }
       case "peer-left": {
         setHasRemoteParticipant(false);
+        setRemoteZoomScale(1);
         clearDisconnectTimer();
         restartAttemptsRef.current = 0;
         setStatus("Waiting for Mom to join");
@@ -573,6 +611,44 @@ export default function CallPage() {
     setIsSwitchingCamera(false);
   }
 
+  function toggleRemoteViewMode() {
+    setRemoteViewMode((previous) => (previous === "fill" ? "fit" : "fill"));
+    setRemoteZoomScale(1);
+  }
+
+  function handleRemoteTouchStart(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2) return;
+
+    pinchStartDistanceRef.current = getTouchDistance(event.touches);
+    pinchStartScaleRef.current = remoteZoomScale;
+    setIsPinchingRemote(true);
+  }
+
+  function handleRemoteTouchMove(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2) return;
+
+    event.preventDefault();
+
+    const startDistance = pinchStartDistanceRef.current;
+    if (!startDistance || startDistance <= 0) {
+      pinchStartDistanceRef.current = getTouchDistance(event.touches);
+      pinchStartScaleRef.current = remoteZoomScale;
+      return;
+    }
+
+    const nextDistance = getTouchDistance(event.touches);
+    const scaleDelta = nextDistance / startDistance;
+    const nextScale = clamp(pinchStartScaleRef.current * scaleDelta, 1, 3);
+    setRemoteZoomScale(nextScale);
+  }
+
+  function handleRemoteTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length >= 2) return;
+
+    pinchStartDistanceRef.current = null;
+    setIsPinchingRemote(false);
+  }
+
   async function toggleMute() {
     const stream = localStreamRef.current;
     const nextMuted = !isMuted;
@@ -630,12 +706,21 @@ export default function CallPage() {
   return (
     <main className="call-page">
       <section className="video-shell">
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className="remote-video"
-        />
+        <div
+          className="remote-video-gesture-layer"
+          onTouchStart={handleRemoteTouchStart}
+          onTouchMove={handleRemoteTouchMove}
+          onTouchEnd={handleRemoteTouchEnd}
+          onTouchCancel={handleRemoteTouchEnd}
+        >
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className={`remote-video ${remoteViewMode === "fit" ? "is-fit" : ""} ${isPinchingRemote ? "is-pinching" : ""}`}
+            style={{ transform: `scale(${remoteZoomScale})` }}
+          />
+        </div>
 
         <div className="top-overlay">
           <div className="glass status-pill">{status}</div>
@@ -679,15 +764,40 @@ export default function CallPage() {
           </div>
         ) : null}
 
-        <div className="local-preview">
+        <div
+          className="local-preview"
+          style={{ aspectRatio: `${localAspectRatio}` }}
+        >
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
             muted
             className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
+            onLoadedMetadata={(event) =>
+              updateLocalAspectRatioFromElement(event.currentTarget)
+            }
           />
         </div>
+
+        <button
+          className="glass icon-button view-mode-toggle"
+          onClick={toggleRemoteViewMode}
+          aria-label={
+            remoteViewMode === "fill"
+              ? "Fit video into screen"
+              : "Fill screen with video"
+          }
+        >
+          {remoteViewMode === "fill" ? (
+            <Minimize2 className="control-icon" aria-hidden="true" />
+          ) : (
+            <Maximize2 className="control-icon" aria-hidden="true" />
+          )}
+          <span>
+            {remoteViewMode === "fill" ? "Fit to screen" : "Fill screen"}
+          </span>
+        </button>
 
         <div className="controls-float glass">
           <button
