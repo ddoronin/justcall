@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type TouchEvent,
+} from "react";
 import {
   Video,
   VideoOff,
@@ -18,6 +25,7 @@ import {
   resolveIceServers,
   sendSignal,
 } from "../lib/signaling";
+import SelfViewContainer from "./SelfViewContainer";
 import { useI18n } from "../i18n/provider";
 import type { TranslationKey } from "../i18n/types";
 import type { CallStatus, ServerSignalMessage } from "../types/signaling";
@@ -25,6 +33,8 @@ import type { CallStatus, ServerSignalMessage } from "../types/signaling";
 const DEFAULT_ERROR_KEY: TranslationKey = "call.error.default";
 type CameraMode = "front" | "back";
 type RemoteViewMode = "fill" | "fit";
+type SelfViewCorner = "top-right" | "top-left" | "bottom-right" | "bottom-left";
+type Rect = { left: number; top: number; right: number; bottom: number };
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) return false;
@@ -53,6 +63,7 @@ export default function CallPage() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteGestureLayerRef = useRef<HTMLDivElement | null>(null);
+  const selfViewRef = useRef<HTMLDivElement | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -68,6 +79,27 @@ export default function CallPage() {
   const pinchStartScaleRef = useRef(1);
   const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
   const panStartOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const selfViewIdleTimerRef = useRef<number | null>(null);
+  const selfViewDragRef = useRef<{
+    pointerId: number;
+    pointerType: string;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressSelfViewTapRef = useRef(false);
+  const selfViewTapRef = useRef<{ time: number; x: number; y: number } | null>(
+    null,
+  );
+  const selfViewCompactStateRef = useRef<{
+    corner: SelfViewCorner;
+    position: { x: number; y: number } | null;
+  }>({
+    corner: "top-right",
+    position: null,
+  });
 
   const [status, setStatus] = useState<CallStatus>(
     "call.status.preparingCamera",
@@ -88,8 +120,23 @@ export default function CallPage() {
   const [isPanningRemote, setIsPanningRemote] = useState(false);
   const [remotePanOffset, setRemotePanOffset] = useState({ x: 0, y: 0 });
   const [localAspectRatio, setLocalAspectRatio] = useState(16 / 9);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  const [selfViewCorner, setSelfViewCorner] =
+    useState<SelfViewCorner>("top-right");
+  const [selfViewPosition, setSelfViewPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [isDraggingSelfView, setIsDraggingSelfView] = useState(false);
+  const [isSelfViewExpanded, setIsSelfViewExpanded] = useState(false);
+  const [isSelfViewHidden, setIsSelfViewHidden] = useState(false);
+  const [isSelfViewIdle, setIsSelfViewIdle] = useState(false);
 
   const validRoomId = roomId ?? "";
+  const isMobileViewport = viewportSize.width <= 760;
   const inviteLink = useMemo(
     () => `${window.location.origin}/call/${validRoomId}`,
     [validRoomId],
@@ -115,6 +162,337 @@ export default function CallPage() {
       second.clientX - first.clientX,
       second.clientY - first.clientY,
     );
+  }
+
+  function getSelfViewDimensions(expanded: boolean): {
+    width: number;
+    height: number;
+  } {
+    const compactTargetRatio = isMobileViewport ? 0.24 : 0.17;
+    const compactWidth = clamp(
+      viewportSize.width * compactTargetRatio,
+      isMobileViewport ? 122 : 140,
+      isMobileViewport ? 172 : 220,
+    );
+    const expandedWidth = clamp(
+      viewportSize.width * 0.36,
+      220,
+      isMobileViewport ? 320 : 460,
+    );
+    const width = expanded ? expandedWidth : compactWidth;
+    const height = width / localAspectRatio;
+    return { width, height };
+  }
+
+  function getSelfViewSafeBounds() {
+    return {
+      margin: 14,
+      top: isMobileViewport ? 84 : 74,
+      bottom: isMobileViewport ? 164 : 18,
+    };
+  }
+
+  function getSelfViewRect(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+  ): Rect {
+    return {
+      left: position.x,
+      top: position.y,
+      right: position.x + width,
+      bottom: position.y + height,
+    };
+  }
+
+  function getRectOverlapArea(first: Rect, second: Rect): number {
+    const overlapWidth = Math.max(
+      0,
+      Math.min(first.right, second.right) - Math.max(first.left, second.left),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top),
+    );
+    return overlapWidth * overlapHeight;
+  }
+
+  function getSelfViewAvoidRects(): Rect[] {
+    const safeTop = Math.max(
+      12,
+      Number.parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--safe-top-fallback",
+        ) || "0",
+        10,
+      ) || 0,
+    );
+    const controlsBottomInset = isMobileViewport ? 12 : 18;
+    const controlsHeight = isMobileViewport ? 70 : 226;
+    const controlsTop = isMobileViewport
+      ? viewportSize.height - controlsBottomInset - controlsHeight
+      : (viewportSize.height - controlsHeight) / 2;
+    const controlsLeft = isMobileViewport
+      ? 12
+      : viewportSize.width - 14 - Math.min(190, viewportSize.width * 0.28);
+    const controlsWidth = isMobileViewport
+      ? viewportSize.width - 24
+      : Math.min(190, viewportSize.width * 0.28);
+    const viewModeWidth = isMobileViewport ? 150 : 176;
+    const viewModeHeight = isMobileViewport ? 44 : 46;
+    const viewModeBottom = isMobileViewport ? 98 : 18;
+    const viewModeTop = viewportSize.height - viewModeBottom - viewModeHeight;
+
+    const rects: Rect[] = [
+      {
+        left: 12,
+        top: safeTop,
+        right: 12 + Math.min(420, viewportSize.width * 0.68),
+        bottom: safeTop + 44,
+      },
+      {
+        left: controlsLeft,
+        top: controlsTop,
+        right: controlsLeft + controlsWidth,
+        bottom: controlsTop + controlsHeight,
+      },
+      {
+        left: (viewportSize.width - viewModeWidth) / 2,
+        top: viewModeTop,
+        right: (viewportSize.width + viewModeWidth) / 2,
+        bottom: viewModeTop + viewModeHeight,
+      },
+    ];
+
+    if (errorMessage) {
+      rects.push({
+        left: 12,
+        top: Math.max(72, safeTop + 60),
+        right: viewportSize.width - 12,
+        bottom: Math.max(72, safeTop + 60) + 56,
+      });
+    }
+
+    if (shareNotice) {
+      const shareBottomInset = isMobileViewport ? 178 : 96;
+      const shareTop = viewportSize.height - shareBottomInset - 48;
+      rects.push({
+        left: 12,
+        top: shareTop,
+        right: viewportSize.width - 12,
+        bottom: shareTop + 48,
+      });
+    }
+
+    return rects;
+  }
+
+  function clampSelfViewPosition(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+  ): { x: number; y: number } {
+    const safe = getSelfViewSafeBounds();
+
+    const minX = safe.margin;
+    const maxX = Math.max(minX, viewportSize.width - safe.margin - width);
+    const minY = safe.top;
+    const maxY = Math.max(minY, viewportSize.height - safe.bottom - height);
+
+    return {
+      x: clamp(position.x, minX, maxX),
+      y: clamp(position.y, minY, maxY),
+    };
+  }
+
+  function getSelfViewCornerPosition(
+    corner: SelfViewCorner,
+    width: number,
+    height: number,
+  ): { x: number; y: number } {
+    const safe = getSelfViewSafeBounds();
+    const right = Math.max(
+      safe.margin,
+      viewportSize.width - safe.margin - width,
+    );
+    const bottom = Math.max(
+      safe.top,
+      viewportSize.height - safe.bottom - height,
+    );
+
+    switch (corner) {
+      case "top-left":
+        return { x: safe.margin, y: safe.top };
+      case "bottom-left":
+        return { x: safe.margin, y: bottom };
+      case "bottom-right":
+        return { x: right, y: bottom };
+      default:
+        return { x: right, y: safe.top };
+    }
+  }
+
+  function getSelfViewPositionForRender(
+    width: number,
+    height: number,
+  ): { x: number; y: number } {
+    const fromState =
+      selfViewPosition ??
+      getSelfViewCornerPosition(selfViewCorner, width, height);
+    return clampSelfViewPosition(fromState, width, height);
+  }
+
+  function getClosestSelfViewCorner(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+  ): SelfViewCorner {
+    const corners: SelfViewCorner[] = [
+      "top-right",
+      "top-left",
+      "bottom-right",
+      "bottom-left",
+    ];
+
+    let closest = corners[0];
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const corner of corners) {
+      const target = getSelfViewCornerPosition(corner, width, height);
+      const distance = Math.hypot(position.x - target.x, position.y - target.y);
+      if (distance < closestDistance) {
+        closest = corner;
+        closestDistance = distance;
+      }
+    }
+
+    return closest;
+  }
+
+  function getBestSelfViewCorner(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+  ): SelfViewCorner {
+    const corners: SelfViewCorner[] = [
+      "top-right",
+      "top-left",
+      "bottom-right",
+      "bottom-left",
+    ];
+    const avoidRects = getSelfViewAvoidRects();
+
+    let bestCorner = corners[0];
+    let bestOverlap = Number.POSITIVE_INFINITY;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const corner of corners) {
+      const candidatePosition = getSelfViewCornerPosition(
+        corner,
+        width,
+        height,
+      );
+      const candidateRect = getSelfViewRect(candidatePosition, width, height);
+      const overlapArea = avoidRects.reduce(
+        (total, avoidRect) =>
+          total + getRectOverlapArea(candidateRect, avoidRect),
+        0,
+      );
+      const distance = Math.hypot(
+        position.x - candidatePosition.x,
+        position.y - candidatePosition.y,
+      );
+
+      if (
+        overlapArea < bestOverlap ||
+        (overlapArea === bestOverlap && distance < bestDistance)
+      ) {
+        bestCorner = corner;
+        bestOverlap = overlapArea;
+        bestDistance = distance;
+      }
+    }
+
+    return bestCorner;
+  }
+
+  function clearSelfViewIdleTimer() {
+    if (selfViewIdleTimerRef.current !== null) {
+      window.clearTimeout(selfViewIdleTimerRef.current);
+      selfViewIdleTimerRef.current = null;
+    }
+  }
+
+  function primeSelfViewIdleTimer() {
+    clearSelfViewIdleTimer();
+    selfViewIdleTimerRef.current = window.setTimeout(() => {
+      setIsSelfViewIdle(true);
+    }, 4000);
+  }
+
+  function markSelfViewInteraction() {
+    setIsSelfViewIdle(false);
+    primeSelfViewIdleTimer();
+  }
+
+  function detectSelfViewSwipeToHide(
+    drag: {
+      startX: number;
+      startY: number;
+      originX: number;
+      originY: number;
+      pointerType: string;
+    },
+    event: PointerEvent<HTMLDivElement>,
+    dimensions: { width: number; height: number },
+  ): boolean {
+    if (drag.pointerType !== "touch" || isSelfViewExpanded) {
+      return false;
+    }
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) {
+      return false;
+    }
+
+    const current = clampSelfViewPosition(
+      {
+        x: drag.originX + deltaX,
+        y: drag.originY + deltaY,
+      },
+      dimensions.width,
+      dimensions.height,
+    );
+    const safe = getSelfViewSafeBounds();
+    const nearLeft = current.x <= safe.margin + 8;
+    const nearRight =
+      current.x >= viewportSize.width - safe.margin - dimensions.width - 8;
+
+    return (deltaX < 0 && nearLeft) || (deltaX > 0 && nearRight);
+  }
+
+  function handleSelfViewTapFlip(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "touch") return;
+
+    const now = performance.now();
+    const previousTap = selfViewTapRef.current;
+    const isDoubleTap =
+      previousTap &&
+      now - previousTap.time < 290 &&
+      Math.hypot(event.clientX - previousTap.x, event.clientY - previousTap.y) <
+        26;
+
+    selfViewTapRef.current = {
+      time: now,
+      x: event.clientX,
+      y: event.clientY,
+    };
+
+    if (!isDoubleTap) return;
+
+    suppressSelfViewTapRef.current = true;
+    void switchCamera();
   }
 
   function updateLocalAspectRatioFromElement(video: HTMLVideoElement | null) {
@@ -244,13 +622,7 @@ export default function CallPage() {
       setCanRetryMedia(false);
       setErrorMessage(null);
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-        void localVideoRef.current.play().catch(() => {
-          // ignore autoplay promise rejections
-        });
-        updateLocalAspectRatioFromElement(localVideoRef.current);
-      }
+      syncLocalVideoElementWithStream(stream);
 
       syncLocalTracksToPeerConnection(pc, stream);
 
@@ -263,6 +635,19 @@ export default function CallPage() {
       setCanRetryMedia(true);
       setErrorMessage(t(getMediaErrorMessageKey(error)));
       return false;
+    }
+  }
+
+  function syncLocalVideoElementWithStream(stream: MediaStream | null) {
+    const videoElement = localVideoRef.current;
+    if (!videoElement) return;
+
+    videoElement.srcObject = stream;
+    if (stream) {
+      void videoElement.play().catch(() => {
+        // ignore autoplay promise rejections
+      });
+      updateLocalAspectRatioFromElement(videoElement);
     }
   }
 
@@ -289,9 +674,91 @@ export default function CallPage() {
   }, [shareNotice]);
 
   useEffect(() => {
+    const onResize = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    primeSelfViewIdleTimer();
+
+    return () => {
+      clearSelfViewIdleTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const markInteraction = () => {
+      if (!isSelfViewHidden) {
+        markSelfViewInteraction();
+      }
+    };
+
+    window.addEventListener("pointerdown", markInteraction);
+    window.addEventListener("keydown", markInteraction);
+    return () => {
+      window.removeEventListener("pointerdown", markInteraction);
+      window.removeEventListener("keydown", markInteraction);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelfViewHidden]);
+
+  useEffect(() => {
+    if (isSelfViewHidden || isDraggingSelfView || isSelfViewExpanded) return;
+
+    const dimensions = getSelfViewDimensions(false);
+    const currentPosition = getSelfViewPositionForRender(
+      dimensions.width,
+      dimensions.height,
+    );
+    const nextCorner = getBestSelfViewCorner(
+      currentPosition,
+      dimensions.width,
+      dimensions.height,
+    );
+    const nextPosition = getSelfViewCornerPosition(
+      nextCorner,
+      dimensions.width,
+      dimensions.height,
+    );
+
+    setSelfViewCorner(nextCorner);
+    setSelfViewPosition(nextPosition);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isSelfViewHidden,
+    isDraggingSelfView,
+    isSelfViewExpanded,
+    isMobileViewport,
+    viewportSize.width,
+    viewportSize.height,
+    errorMessage,
+    shareNotice,
+  ]);
+
+  useEffect(() => {
     if (!hasRemoteParticipant) return;
     setShowInviteModal(false);
   }, [hasRemoteParticipant]);
+
+  useEffect(() => {
+    if (isSelfViewHidden) return;
+    const stream = localStreamRef.current;
+    const videoElement = localVideoRef.current;
+    if (!videoElement) return;
+
+    videoElement.srcObject = stream;
+    if (stream) {
+      void videoElement.play().catch(() => {
+        // ignore autoplay promise rejections
+      });
+      updateLocalAspectRatioFromElement(videoElement);
+    }
+  }, [isSelfViewHidden, cameraMode]);
 
   useEffect(() => {
     if (remoteZoomScale <= 1) {
@@ -775,7 +1242,195 @@ export default function CallPage() {
 
     stopStream(localStreamRef.current);
     localStreamRef.current = null;
+
+    clearSelfViewIdleTimer();
   }
+
+  function toggleSelfViewExpanded() {
+    markSelfViewInteraction();
+
+    setIsSelfViewExpanded((expanded) => {
+      const compactDimensions = getSelfViewDimensions(false);
+
+      if (!expanded) {
+        selfViewCompactStateRef.current = {
+          corner: selfViewCorner,
+          position: getSelfViewPositionForRender(
+            compactDimensions.width,
+            compactDimensions.height,
+          ),
+        };
+
+        const expandedDimensions = getSelfViewDimensions(true);
+        const centered = clampSelfViewPosition(
+          {
+            x: (viewportSize.width - expandedDimensions.width) / 2,
+            y: (viewportSize.height - expandedDimensions.height) / 2,
+          },
+          expandedDimensions.width,
+          expandedDimensions.height,
+        );
+
+        setSelfViewPosition(centered);
+        return true;
+      }
+
+      setSelfViewCorner(selfViewCompactStateRef.current.corner);
+      setSelfViewPosition(selfViewCompactStateRef.current.position);
+      return false;
+    });
+  }
+
+  function hideSelfView() {
+    markSelfViewInteraction();
+
+    const compactDimensions = getSelfViewDimensions(false);
+    selfViewCompactStateRef.current = {
+      corner: selfViewCorner,
+      position: getSelfViewPositionForRender(
+        compactDimensions.width,
+        compactDimensions.height,
+      ),
+    };
+
+    setIsSelfViewHidden(true);
+    setIsSelfViewExpanded(false);
+  }
+
+  function restoreSelfView() {
+    markSelfViewInteraction();
+    setSelfViewCorner(selfViewCompactStateRef.current.corner);
+    setSelfViewPosition(selfViewCompactStateRef.current.position);
+    setIsSelfViewHidden(false);
+  }
+
+  function handleSelfViewPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    markSelfViewInteraction();
+
+    const dimensions = getSelfViewDimensions(isSelfViewExpanded);
+    const position = getSelfViewPositionForRender(
+      dimensions.width,
+      dimensions.height,
+    );
+
+    selfViewDragRef.current = {
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y,
+      moved: false,
+    };
+
+    setIsDraggingSelfView(true);
+    setSelfViewPosition(position);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleSelfViewPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = selfViewDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) > 4) {
+      drag.moved = true;
+      suppressSelfViewTapRef.current = true;
+    }
+
+    const dimensions = getSelfViewDimensions(isSelfViewExpanded);
+    setSelfViewPosition(
+      clampSelfViewPosition(
+        {
+          x: drag.originX + deltaX,
+          y: drag.originY + deltaY,
+        },
+        dimensions.width,
+        dimensions.height,
+      ),
+    );
+  }
+
+  function handleSelfViewPointerUp(event: PointerEvent<HTMLDivElement>) {
+    const drag = selfViewDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const dimensions = getSelfViewDimensions(isSelfViewExpanded);
+    const current = clampSelfViewPosition(
+      {
+        x: drag.originX + (event.clientX - drag.startX),
+        y: drag.originY + (event.clientY - drag.startY),
+      },
+      dimensions.width,
+      dimensions.height,
+    );
+
+    if (!isSelfViewExpanded) {
+      if (detectSelfViewSwipeToHide(drag, event, dimensions)) {
+        hideSelfView();
+        setIsDraggingSelfView(false);
+        selfViewDragRef.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        return;
+      }
+
+      const snappedCorner = getBestSelfViewCorner(
+        current,
+        dimensions.width,
+        dimensions.height,
+      );
+      const snappedPosition = getSelfViewCornerPosition(
+        snappedCorner,
+        dimensions.width,
+        dimensions.height,
+      );
+      setSelfViewCorner(snappedCorner);
+      setSelfViewPosition(snappedPosition);
+
+      handleSelfViewTapFlip(event);
+    } else {
+      setSelfViewPosition(current);
+    }
+
+    setIsDraggingSelfView(false);
+    selfViewDragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function handleSelfViewPointerCancel(event: PointerEvent<HTMLDivElement>) {
+    const drag = selfViewDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    setIsDraggingSelfView(false);
+    selfViewDragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function handleSelfViewClick() {
+    markSelfViewInteraction();
+
+    if (suppressSelfViewTapRef.current) {
+      suppressSelfViewTapRef.current = false;
+      return;
+    }
+
+    toggleSelfViewExpanded();
+  }
+
+  function handleSelfViewDoubleClick(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void switchCamera();
+  }
+
+  const selfViewDimensions = getSelfViewDimensions(isSelfViewExpanded);
+  const selfViewRenderPosition = getSelfViewPositionForRender(
+    selfViewDimensions.width,
+    selfViewDimensions.height,
+  );
 
   const endCall = () => {
     leaveCall(validRoomId);
@@ -846,21 +1501,38 @@ export default function CallPage() {
           </div>
         ) : null}
 
-        <div
-          className="local-preview"
-          style={{ aspectRatio: `${localAspectRatio}` }}
-        >
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
-            onLoadedMetadata={(event) =>
-              updateLocalAspectRatioFromElement(event.currentTarget)
+        <SelfViewContainer
+          localVideoRef={localVideoRef}
+          isSelfViewHidden={isSelfViewHidden}
+          restoreSelfView={restoreSelfView}
+          selfViewRef={selfViewRef}
+          isSelfViewExpanded={isSelfViewExpanded}
+          isDraggingSelfView={isDraggingSelfView}
+          isSelfViewIdle={isSelfViewIdle}
+          localAspectRatio={localAspectRatio}
+          selfViewWidth={selfViewDimensions.width}
+          selfViewX={selfViewRenderPosition.x}
+          selfViewY={selfViewRenderPosition.y}
+          onPointerDown={handleSelfViewPointerDown}
+          onPointerMove={handleSelfViewPointerMove}
+          onPointerUp={handleSelfViewPointerUp}
+          onPointerCancel={handleSelfViewPointerCancel}
+          onClick={handleSelfViewClick}
+          onDoubleClick={handleSelfViewDoubleClick}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleSelfViewExpanded();
             }
-          />
-        </div>
+          }}
+          cameraMode={cameraMode}
+          onLocalVideoMetadata={updateLocalAspectRatioFromElement}
+          isMuted={isMuted}
+          isVideoOff={isVideoOff}
+          onSwitchCamera={switchCamera}
+          onToggleVideo={toggleVideo}
+          onHideSelfView={hideSelfView}
+        />
 
         <button
           className="glass icon-button view-mode-toggle"
