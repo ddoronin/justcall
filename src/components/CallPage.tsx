@@ -220,6 +220,11 @@ export default function CallPage() {
   }, [shareNotice]);
 
   useEffect(() => {
+    if (!hasRemoteParticipant) return;
+    setShowInviteModal(false);
+  }, [hasRemoteParticipant]);
+
+  useEffect(() => {
     if (!validRoomId) {
       navigate("/", { replace: true });
       return;
@@ -735,7 +740,7 @@ export default function CallPage() {
         </div>
       </section>
 
-      {showInviteModal ? (
+      {showInviteModal && !hasRemoteParticipant ? (
         <section
           className="modal-backdrop"
           onClick={() => setShowInviteModal(false)}
