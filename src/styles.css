@@ -90,6 +90,19 @@ p {
   font-weight: 700;
 }
 
+.home-start-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+}
+
+.home-start-icon {
+  width: 20px;
+  height: 20px;
+}
+
 .join-block {
   margin-top: 14px;
   display: grid;
@@ -120,16 +133,20 @@ p {
 }
 
 .local-video {
-  position: absolute;
-  right: 16px;
-  top: 86px;
-  width: min(34vw, 180px);
+  width: 100%;
   aspect-ratio: 16/9;
   border-radius: 14px;
   object-fit: cover;
   background: #121316;
   border: 2px solid #ffffff2e;
   box-shadow: 0 8px 24px #00000069;
+}
+
+.local-preview {
+  position: absolute;
+  right: 16px;
+  top: 86px;
+  width: min(34vw, 180px);
 }
 
 .mirrored {
@@ -140,29 +157,34 @@ p {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   left: 12px;
-  right: 12px;
+  right: auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  z-index: 4;
 }
 
 .status-pill {
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 10px 16px;
   font-size: 14px;
   color: #edf2ff;
+  max-width: min(68vw, 420px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .controls-float {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: max(12px, env(safe-area-inset-bottom));
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
   gap: 10px;
+  width: min(190px, 28vw);
+  padding: 10px;
+  border-radius: 18px;
 }
 
 .error-banner,
@@ -177,24 +199,140 @@ p {
 }
 
 .error-banner {
-  top: max(62px, calc(env(safe-area-inset-top) + 52px));
+  top: max(72px, calc(env(safe-area-inset-top) + 60px));
+  max-width: min(calc(100% - 220px), 720px);
   color: #ffd4d4;
+  z-index: 3;
 }
 
 .danger {
-  background: linear-gradient(145deg, #ea4a4a, #be2f2f);
+  background: linear-gradient(145deg, #ed5b5b8f, #c9363685);
+  border-color: #ff9f9f66;
   color: #fff;
 }
 
+.control-button {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.control-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.control-label {
+  display: inline;
+}
+
+.control-button.is-active {
+  background: linear-gradient(145deg, #97c4ff66, #5d89d466);
+  border-color: #c9deff7a;
+}
+
+.end-button {
+  font-weight: 700;
+}
+
+.share-button {
+  margin-top: 0;
+  background: linear-gradient(145deg, #60a5fa7a, #3b82f680);
+  border-color: #b8d5ff69;
+}
+
 .share-notice {
-  bottom: max(70px, calc(env(safe-area-inset-bottom) + 58px));
+  bottom: max(96px, calc(env(safe-area-inset-bottom) + 84px));
   color: #def7e9;
+  z-index: 5;
+}
+
+.invite-center-wrap {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: center;
+  z-index: 4;
+}
+
+.invite-center-card {
+  width: min(560px, 94vw);
+  border-radius: 20px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.invite-center-button {
+  margin-top: 0;
+  width: 100%;
+  min-height: 58px;
+  font-size: 21px;
+  font-weight: 800;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 12px 28px #10964173, inset 0 1px 0 #b6ffd66e;
+}
+
+.invite-cta-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.invite-link-row {
+  border: 1px solid #ffffff2a;
+  border-radius: 14px;
+  background: linear-gradient(140deg, #ffffff20, #ffffff12);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.invite-center-url {
+  margin: 0;
+  padding: 0 4px;
+  color: #ecf2ff;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invite-copy-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invite-copy-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: #04050b7d;
+  background: radial-gradient(circle at 50% 12%, #9ec5ff1a, #04050baa 58%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: grid;
   place-items: end center;
   padding: 16px;
@@ -208,6 +346,19 @@ p {
   display: grid;
   gap: 10px;
   margin-bottom: max(0px, env(safe-area-inset-bottom));
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, #ffffff2d, #ffffff14 45%, #a3b8ff18 100%);
+  border: 1px solid #ffffff42;
+  box-shadow: 0 20px 44px #02030a6b, inset 0 1px 0 #ffffff3d;
+}
+
+.modal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(130deg, #ffffff1f 0%, transparent 42%);
+  pointer-events: none;
 }
 
 .modal h2 {
@@ -236,18 +387,71 @@ p {
   }
 
   .local-video {
-    width: 140px;
-    top: max(72px, calc(env(safe-area-inset-top) + 56px));
+    width: 100%;
+  }
+
+  .local-preview {
+    width: 132px;
+    top: max(84px, calc(env(safe-area-inset-top) + 68px));
     right: 12px;
   }
 
   .controls-float {
-    grid-auto-flow: row;
-    grid-auto-columns: 1fr;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    transform: none;
+    width: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .control-button {
+    gap: 0;
+    min-height: 48px;
+    padding: 11px;
+  }
+
+  .error-banner {
+    max-width: none;
+  }
+
+  .share-notice {
+    bottom: max(178px, calc(env(safe-area-inset-bottom) + 166px));
+  }
+
+  .control-label {
+    display: none;
   }
 
   .modal {
     border-radius: 18px 18px 0 0;
     width: 100%;
+  }
+
+  .invite-center-wrap {
+    top: 56%;
+    transform: translateY(-56%);
+    left: 16px;
+    right: 16px;
+  }
+
+  .invite-center-card {
+    width: 100%;
+    border-radius: 18px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .invite-center-button {
+    min-height: 54px;
+    font-size: 19px;
+  }
+
+  .invite-center-url {
+    font-size: 13px;
   }
 }

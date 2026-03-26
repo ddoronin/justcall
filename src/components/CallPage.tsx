@@ -1,4 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Camera,
+  CameraOff,
+  Copy,
+  FlipHorizontal,
+  Mic,
+  MicOff,
+  PhoneOff,
+  Share2,
+} from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   createSignalingSocket,
@@ -44,6 +54,7 @@ export default function CallPage() {
   const mediaStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const isInitiatorRef = useRef(false);
+  const hasAutoOpenedInviteRef = useRef(false);
   const disconnectTimerRef = useRef<number | null>(null);
   const restartAttemptsRef = useRef(0);
 
@@ -53,8 +64,11 @@ export default function CallPage() {
   const [canRetryMedia, setCanRetryMedia] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>("front");
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [hasRemoteParticipant, setHasRemoteParticipant] = useState(false);
 
   const validRoomId = roomId ?? "";
   const inviteLink = useMemo(
@@ -133,6 +147,19 @@ export default function CallPage() {
     });
   }
 
+  function applyMediaPreferenceToStream(stream: MediaStream) {
+    const audioEnabled = !isMuted;
+    const videoEnabled = !isVideoOff;
+
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = audioEnabled;
+    });
+
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = videoEnabled;
+    });
+  }
+
   async function startLocalMedia(
     mode: CameraMode = cameraMode,
   ): Promise<boolean> {
@@ -142,6 +169,8 @@ export default function CallPage() {
     try {
       const stream = await attachLocalMedia(mode);
       const previousStream = localStreamRef.current;
+
+      applyMediaPreferenceToStream(stream);
 
       localStreamRef.current = stream;
       setCanRetryMedia(false);
@@ -197,6 +226,7 @@ export default function CallPage() {
     }
 
     let isMounted = true;
+    setHasRemoteParticipant(false);
     setStatus("Joining call...");
 
     const setup = async () => {
@@ -261,9 +291,14 @@ export default function CallPage() {
         isInitiatorRef.current = initiator;
         setIsInitiator(initiator);
         setStatus(initiator ? "Waiting for Mom to join" : "Joining call...");
+        if (initiator && !hasAutoOpenedInviteRef.current) {
+          hasAutoOpenedInviteRef.current = true;
+          setShowInviteModal(true);
+        }
         break;
       }
       case "peer-joined": {
+        setHasRemoteParticipant(true);
         if (!isInitiatorRef.current) break;
         setStatus("Connecting call...");
         await ensureLocalMediaStarted();
@@ -271,6 +306,7 @@ export default function CallPage() {
         break;
       }
       case "offer": {
+        setHasRemoteParticipant(true);
         setStatus("Connecting call...");
         setErrorMessage(null);
 
@@ -290,6 +326,7 @@ export default function CallPage() {
         break;
       }
       case "answer": {
+        setHasRemoteParticipant(true);
         setErrorMessage(null);
         await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
         await flushQueuedCandidates();
@@ -304,6 +341,7 @@ export default function CallPage() {
         break;
       }
       case "peer-left": {
+        setHasRemoteParticipant(false);
         clearDisconnectTimer();
         restartAttemptsRef.current = 0;
         setStatus("Waiting for Mom to join");
@@ -349,6 +387,7 @@ export default function CallPage() {
     pc.ontrack = (event) => {
       const [stream] = event.streams;
       if (remoteVideoRef.current && stream) {
+        setHasRemoteParticipant(true);
         remoteVideoRef.current.srcObject = stream;
       }
     };
@@ -529,6 +568,41 @@ export default function CallPage() {
     setIsSwitchingCamera(false);
   }
 
+  async function toggleMute() {
+    const stream = localStreamRef.current;
+    const nextMuted = !isMuted;
+
+    if (!stream) {
+      setIsMuted(nextMuted);
+      return;
+    }
+
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !nextMuted;
+    });
+
+    setIsMuted(nextMuted);
+  }
+
+  async function toggleVideo() {
+    const stream = localStreamRef.current;
+    const nextVideoOff = !isVideoOff;
+
+    if (!stream || stream.getVideoTracks().length === 0) {
+      const started = await startLocalMedia(cameraMode);
+      if (started) {
+        setIsVideoOff(false);
+      }
+      return;
+    }
+
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = !nextVideoOff;
+    });
+
+    setIsVideoOff(nextVideoOff);
+  }
+
   function leaveCall(room: string) {
     clearDisconnectTimer();
 
@@ -560,12 +634,6 @@ export default function CallPage() {
 
         <div className="top-overlay">
           <div className="glass status-pill">{status}</div>
-          <button
-            className="glass icon-button"
-            onClick={() => setShowInviteModal(true)}
-          >
-            Invite
-          </button>
         </div>
 
         {errorMessage ? (
@@ -578,34 +646,91 @@ export default function CallPage() {
           <p className="glass share-notice">{shareNotice}</p>
         ) : null}
 
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
-        />
+        {!hasRemoteParticipant ? (
+          <div className="invite-center-wrap" role="status" aria-live="polite">
+            <div className="glass invite-center-card">
+              <button
+                className="glass primary invite-center-button"
+                onClick={() => void shareInviteLink()}
+                aria-label="Share invite link"
+              >
+                <Share2 className="invite-cta-icon" aria-hidden="true" />
+                <span>Share call invite</span>
+              </button>
 
-        <div className="controls-float">
+              <div className="invite-link-row">
+                <p className="invite-center-url" title={inviteLink}>
+                  {inviteLink}
+                </p>
+                <button
+                  className="glass icon-button invite-copy-button"
+                  onClick={() => void copyInviteLink()}
+                  aria-label="Copy invite link"
+                >
+                  <Copy className="invite-copy-icon" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="local-preview">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`local-video ${cameraMode === "front" ? "mirrored" : ""}`}
+          />
+        </div>
+
+        <div className="controls-float glass">
           <button
-            className="glass icon-button"
+            className={`glass icon-button control-button ${isVideoOff ? "is-active" : ""}`}
+            onClick={() => void toggleVideo()}
+            aria-pressed={isVideoOff}
+            aria-label={isVideoOff ? "Turn camera on" : "Turn camera off"}
+          >
+            {isVideoOff ? (
+              <CameraOff className="control-icon" aria-hidden="true" />
+            ) : (
+              <Camera className="control-icon" aria-hidden="true" />
+            )}
+            <span className="control-label">
+              {isVideoOff ? "Camera On" : "Camera Off"}
+            </span>
+          </button>
+          <button
+            className={`glass icon-button control-button ${isMuted ? "is-active" : ""}`}
+            onClick={() => void toggleMute()}
+            aria-pressed={isMuted}
+            aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+          >
+            {isMuted ? (
+              <MicOff className="control-icon" aria-hidden="true" />
+            ) : (
+              <Mic className="control-icon" aria-hidden="true" />
+            )}
+            <span className="control-label">{isMuted ? "Unmute" : "Mute"}</span>
+          </button>
+          <button
+            className="glass icon-button control-button"
             onClick={() => void switchCamera()}
             disabled={isSwitchingCamera}
+            aria-label="Flip camera"
           >
-            {isSwitchingCamera ? "Switching..." : "Flip"}
+            <FlipHorizontal className="control-icon" aria-hidden="true" />
+            <span className="control-label">
+              {isSwitchingCamera ? "Flipping..." : "Flip"}
+            </span>
           </button>
-
-          {canRetryMedia ? (
-            <button
-              className="glass icon-button"
-              onClick={() => void startLocalMedia()}
-            >
-              Enable Camera
-            </button>
-          ) : null}
-
-          <button className="danger" onClick={endCall}>
-            End
+          <button
+            className="glass danger icon-button control-button end-button"
+            onClick={endCall}
+            aria-label="End call"
+          >
+            <PhoneOff className="control-icon" aria-hidden="true" />
+            <span className="control-label">End</span>
           </button>
         </div>
       </section>
@@ -630,7 +755,7 @@ export default function CallPage() {
                 Copy
               </button>
               <button
-                className="primary"
+                className="glass primary share-button"
                 onClick={() => void shareInviteLink()}
               >
                 Share

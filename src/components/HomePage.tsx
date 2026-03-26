@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { Video } from "lucide-react";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -36,22 +37,11 @@ export default function HomePage() {
     <main className="home-page">
       <div className="card glass">
         <h1>JustCall</h1>
-        <p>FaceTime-style calls in one tap.</p>
-        <button className="primary" onClick={startCall}>
-          Start Call
+        <p>Simple video calls, just a tap away.</p>
+        <button className="primary home-start-button" onClick={startCall}>
+          <Video className="home-start-icon" aria-hidden="true" />
+          <span>Start Video Call</span>
         </button>
-
-        <div className="join-block">
-          <input
-            value={joinValue}
-            onChange={(event) => setJoinValue(event.target.value)}
-            placeholder="Paste call link or room ID"
-            aria-label="Call link or room ID"
-          />
-          <button className="glass icon-button" onClick={joinCall}>
-            Join Call
-          </button>
-        </div>
       </div>
     </main>
   );
