@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import {
-  Camera,
-  CameraOff,
+  Video,
+  VideoOff,
   Copy,
-  FlipHorizontal,
+  SwitchCamera,
   Maximize2,
   Mic,
   MicOff,
   Minimize2,
-  PhoneOff,
+  Phone,
   Share2,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -49,6 +49,7 @@ export default function CallPage() {
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteGestureLayerRef = useRef<HTMLDivElement | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -62,6 +63,8 @@ export default function CallPage() {
   const restartAttemptsRef = useRef(0);
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef(1);
+  const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
+  const panStartOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [status, setStatus] = useState<CallStatus>("Preparing your camera...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -77,6 +80,8 @@ export default function CallPage() {
   const [remoteViewMode, setRemoteViewMode] = useState<RemoteViewMode>("fill");
   const [remoteZoomScale, setRemoteZoomScale] = useState(1);
   const [isPinchingRemote, setIsPinchingRemote] = useState(false);
+  const [isPanningRemote, setIsPanningRemote] = useState(false);
+  const [remotePanOffset, setRemotePanOffset] = useState({ x: 0, y: 0 });
   const [localAspectRatio, setLocalAspectRatio] = useState(16 / 9);
 
   const validRoomId = roomId ?? "";
@@ -116,6 +121,28 @@ export default function CallPage() {
     }
   }
 
+  function getRemotePanBounds(scale: number): { maxX: number; maxY: number } {
+    const layer = remoteGestureLayerRef.current;
+    if (!layer || scale <= 1) return { maxX: 0, maxY: 0 };
+
+    const { width, height } = layer.getBoundingClientRect();
+    return {
+      maxX: ((scale - 1) * width) / 2,
+      maxY: ((scale - 1) * height) / 2,
+    };
+  }
+
+  function clampPanOffset(
+    offset: { x: number; y: number },
+    scale: number,
+  ): { x: number; y: number } {
+    const { maxX, maxY } = getRemotePanBounds(scale);
+    return {
+      x: clamp(offset.x, -maxX, maxX),
+      y: clamp(offset.y, -maxY, maxY),
+    };
+  }
+
   async function attachLocalMedia(mode: CameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new DOMException(
@@ -151,19 +178,19 @@ export default function CallPage() {
     const mediaError = error as DOMException;
 
     if (mediaError?.name === "NotAllowedError") {
-      return "Camera/microphone permission was denied. Click Enable Camera below after allowing access in browser settings.";
+      return "Video/microphone permission was denied. Click Enable Video below after allowing access in browser settings.";
     }
     if (mediaError?.name === "NotFoundError") {
       return "No camera was found on this device.";
     }
     if (mediaError?.name === "NotReadableError") {
-      return "Camera is busy in another app. Close other apps using camera and try again.";
+      return "Video is busy in another app. Close other apps using camera and try again.";
     }
     if (mediaError?.name === "SecurityError") {
-      return "Camera is blocked by browser security settings.";
+      return "Video is blocked by browser security settings.";
     }
 
-    return "Could not start camera/microphone. Click Enable Camera to try again.";
+    return "Could not start camera/microphone. Click Enable Video to try again.";
   }
 
   function syncLocalTracksToPeerConnection(
@@ -262,6 +289,16 @@ export default function CallPage() {
   }, [hasRemoteParticipant]);
 
   useEffect(() => {
+    if (remoteZoomScale <= 1) {
+      setRemotePanOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    setRemotePanOffset((previous) => clampPanOffset(previous, remoteZoomScale));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteZoomScale]);
+
+  useEffect(() => {
     if (!validRoomId) {
       navigate("/", { replace: true });
       return;
@@ -287,7 +324,7 @@ export default function CallPage() {
 
         socket.addEventListener("open", () => {
           setErrorMessage(null);
-          setStatus("Waiting for Mom to join");
+          setStatus("Waiting someone to join");
           sendSignal(socket, { type: "join-room", roomId: validRoomId });
         });
 
@@ -332,7 +369,7 @@ export default function CallPage() {
         const initiator = Boolean(message.isInitiator);
         isInitiatorRef.current = initiator;
         setIsInitiator(initiator);
-        setStatus(initiator ? "Waiting for Mom to join" : "Joining call...");
+        setStatus(initiator ? "Waiting someone to join" : "Joining call...");
         if (initiator && !hasAutoOpenedInviteRef.current) {
           hasAutoOpenedInviteRef.current = true;
           setShowInviteModal(true);
@@ -385,9 +422,10 @@ export default function CallPage() {
       case "peer-left": {
         setHasRemoteParticipant(false);
         setRemoteZoomScale(1);
+        setRemotePanOffset({ x: 0, y: 0 });
         clearDisconnectTimer();
         restartAttemptsRef.current = 0;
-        setStatus("Waiting for Mom to join");
+        setStatus("Waiting someone to join");
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null;
         }
@@ -614,36 +652,78 @@ export default function CallPage() {
   function toggleRemoteViewMode() {
     setRemoteViewMode((previous) => (previous === "fill" ? "fit" : "fill"));
     setRemoteZoomScale(1);
+    setRemotePanOffset({ x: 0, y: 0 });
   }
 
   function handleRemoteTouchStart(event: TouchEvent<HTMLDivElement>) {
-    if (event.touches.length !== 2) return;
-
-    pinchStartDistanceRef.current = getTouchDistance(event.touches);
-    pinchStartScaleRef.current = remoteZoomScale;
-    setIsPinchingRemote(true);
-  }
-
-  function handleRemoteTouchMove(event: TouchEvent<HTMLDivElement>) {
-    if (event.touches.length !== 2) return;
-
-    event.preventDefault();
-
-    const startDistance = pinchStartDistanceRef.current;
-    if (!startDistance || startDistance <= 0) {
+    if (event.touches.length === 2) {
       pinchStartDistanceRef.current = getTouchDistance(event.touches);
       pinchStartScaleRef.current = remoteZoomScale;
+      panStartTouchRef.current = null;
+      setIsPinchingRemote(true);
+      setIsPanningRemote(false);
       return;
     }
 
-    const nextDistance = getTouchDistance(event.touches);
-    const scaleDelta = nextDistance / startDistance;
-    const nextScale = clamp(pinchStartScaleRef.current * scaleDelta, 1, 3);
-    setRemoteZoomScale(nextScale);
+    if (event.touches.length === 1 && remoteZoomScale > 1) {
+      const touch = event.touches[0];
+      panStartTouchRef.current = { x: touch.clientX, y: touch.clientY };
+      panStartOffsetRef.current = remotePanOffset;
+      setIsPanningRemote(true);
+    }
+  }
+
+  function handleRemoteTouchMove(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length === 2) {
+      event.preventDefault();
+
+      const startDistance = pinchStartDistanceRef.current;
+      if (!startDistance || startDistance <= 0) {
+        pinchStartDistanceRef.current = getTouchDistance(event.touches);
+        pinchStartScaleRef.current = remoteZoomScale;
+        return;
+      }
+
+      const nextDistance = getTouchDistance(event.touches);
+      const scaleDelta = nextDistance / startDistance;
+      const nextScale = clamp(pinchStartScaleRef.current * scaleDelta, 1, 3);
+      setRemoteZoomScale(nextScale);
+      return;
+    }
+
+    if (event.touches.length === 1 && remoteZoomScale > 1) {
+      const panStartTouch = panStartTouchRef.current;
+      if (!panStartTouch) return;
+
+      event.preventDefault();
+
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - panStartTouch.x;
+      const deltaY = touch.clientY - panStartTouch.y;
+      const nextOffset = clampPanOffset(
+        {
+          x: panStartOffsetRef.current.x + deltaX,
+          y: panStartOffsetRef.current.y + deltaY,
+        },
+        remoteZoomScale,
+      );
+
+      setRemotePanOffset(nextOffset);
+    }
   }
 
   function handleRemoteTouchEnd(event: TouchEvent<HTMLDivElement>) {
     if (event.touches.length >= 2) return;
+
+    if (event.touches.length === 1 && remoteZoomScale > 1) {
+      const touch = event.touches[0];
+      panStartTouchRef.current = { x: touch.clientX, y: touch.clientY };
+      panStartOffsetRef.current = remotePanOffset;
+      setIsPanningRemote(true);
+    } else {
+      panStartTouchRef.current = null;
+      setIsPanningRemote(false);
+    }
 
     pinchStartDistanceRef.current = null;
     setIsPinchingRemote(false);
@@ -708,6 +788,7 @@ export default function CallPage() {
       <section className="video-shell">
         <div
           className="remote-video-gesture-layer"
+          ref={remoteGestureLayerRef}
           onTouchStart={handleRemoteTouchStart}
           onTouchMove={handleRemoteTouchMove}
           onTouchEnd={handleRemoteTouchEnd}
@@ -717,8 +798,10 @@ export default function CallPage() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className={`remote-video ${remoteViewMode === "fit" ? "is-fit" : ""} ${isPinchingRemote ? "is-pinching" : ""}`}
-            style={{ transform: `scale(${remoteZoomScale})` }}
+            className={`remote-video ${remoteViewMode === "fit" ? "is-fit" : ""} ${isPinchingRemote || isPanningRemote ? "is-pinching" : ""}`}
+            style={{
+              transform: `translate3d(${remotePanOffset.x}px, ${remotePanOffset.y}px, 0) scale(${remoteZoomScale})`,
+            }}
           />
         </div>
 
@@ -807,12 +890,12 @@ export default function CallPage() {
             aria-label={isVideoOff ? "Turn camera on" : "Turn camera off"}
           >
             {isVideoOff ? (
-              <CameraOff className="control-icon" aria-hidden="true" />
+              <VideoOff className="control-icon" aria-hidden="true" />
             ) : (
-              <Camera className="control-icon" aria-hidden="true" />
+              <Video className="control-icon" aria-hidden="true" />
             )}
             <span className="control-label">
-              {isVideoOff ? "Camera On" : "Camera Off"}
+              {isVideoOff ? "Video On" : "Video Off"}
             </span>
           </button>
           <button
@@ -834,7 +917,7 @@ export default function CallPage() {
             disabled={isSwitchingCamera}
             aria-label="Flip camera"
           >
-            <FlipHorizontal className="control-icon" aria-hidden="true" />
+            <SwitchCamera className="control-icon" aria-hidden="true" />
             <span className="control-label">
               {isSwitchingCamera ? "Flipping..." : "Flip"}
             </span>
@@ -844,7 +927,7 @@ export default function CallPage() {
             onClick={endCall}
             aria-label="End call"
           >
-            <PhoneOff className="control-icon" aria-hidden="true" />
+            <Phone className="control-icon end-call-icon" aria-hidden="true" />
             <span className="control-label">End</span>
           </button>
         </div>

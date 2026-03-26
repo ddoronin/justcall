@@ -275,6 +275,10 @@ p {
   font-weight: 700;
 }
 
+.end-call-icon {
+  transform: rotate(130deg);
+}
+
 .share-button {
   margin-top: 0;
   background: linear-gradient(145deg, #60a5fa7a, #3b82f680);

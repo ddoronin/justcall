@@ -22,7 +22,7 @@ export type ServerSignalMessage =
 
 export type CallStatus =
   | "Preparing your camera..."
-  | "Waiting for Mom to join"
+  | "Waiting someone to join"
   | "Joining call..."
   | "Connecting call..."
   | "Call connected"
