@@ -1,4 +1,4 @@
-export type SupportedLocale = "en-US" | "ru";
+export type SupportedLocale = "en-US" | "ru" | "zh-CN";
 
 export type TranslationKey =
   | "home.title"
