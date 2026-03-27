@@ -24,6 +24,7 @@ export type CallStatus =
   | "call.status.camera.requestingPermissions"
   | "call.status.camera.initializing"
   | "call.status.camera.ready"
+  | "call.status.network.preparing"
   | "call.status.webrtc.connecting"
   | "call.status.webrtc.waitingParticipant"
   | "call.status.connected"

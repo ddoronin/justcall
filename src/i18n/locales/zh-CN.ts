@@ -7,6 +7,7 @@ const zhCN: Translations = {
   "call.status.camera.requestingPermissions": "等待摄像头权限...",
   "call.status.camera.initializing": "正在初始化摄像头...",
   "call.status.camera.ready": "摄像头已就绪",
+  "call.status.network.preparing": "正在准备通话网络...",
   "call.status.webrtc.connecting": "正在建立通话连接...",
   "call.status.webrtc.waitingParticipant": "等待对方加入",
   "call.status.connected": "通话已连接",

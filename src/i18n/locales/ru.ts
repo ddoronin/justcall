@@ -8,6 +8,7 @@ const ru: Translations = {
     "Ожидание разрешения на камеру...",
   "call.status.camera.initializing": "Инициализация камеры...",
   "call.status.camera.ready": "Камера готова",
+  "call.status.network.preparing": "Подготавливаем сетевое подключение...",
   "call.status.webrtc.connecting": "Устанавливаем соединение звонка...",
   "call.status.webrtc.waitingParticipant": "Ожидание подключения собеседника",
   "call.status.connected": "Звонок подключён",

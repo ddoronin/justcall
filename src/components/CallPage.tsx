@@ -170,6 +170,11 @@ export default function CallPage() {
   );
   const hasCompletedCallRef = useRef(false);
   const isCameraInitializationPhase = status.startsWith("call.status.camera.");
+  const isInvitePanelVisible =
+    !hasRemoteParticipant &&
+    status !== "call.status.camera.requestingPermissions" &&
+    status !== "call.status.camera.initializing" &&
+    status !== "call.status.ended";
   const shouldAutoHideCallControls =
     hasRemoteParticipant &&
     status !== "call.status.ended" &&
@@ -900,6 +905,7 @@ export default function CallPage() {
         }
 
         setStatus("call.status.camera.ready");
+        setStatus("call.status.network.preparing");
 
         const iceServers = await resolveIceServers();
         resolvedIceServersRef.current = iceServers;
@@ -1386,7 +1392,7 @@ export default function CallPage() {
         />
 
         <InvitePanel
-          visible={!isCameraInitializationPhase && !hasRemoteParticipant}
+          visible={isInvitePanelVisible}
           inviteLink={inviteLink}
           shareAriaLabel={t("call.invite.shareAria")}
           shareLabel={t("call.invite.shareCta")}

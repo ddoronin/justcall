@@ -8,6 +8,7 @@ const enUS: Translations = {
     "Waiting for camera permission...",
   "call.status.camera.initializing": "Initializing camera...",
   "call.status.camera.ready": "Camera is ready",
+  "call.status.network.preparing": "Preparing call network...",
   "call.status.webrtc.connecting": "Establishing call connection...",
   "call.status.webrtc.waitingParticipant": "Waiting for someone to join",
   "call.status.connected": "Call connected",
