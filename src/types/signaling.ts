@@ -21,10 +21,11 @@ export type ServerSignalMessage =
   | { type: "error"; message: string };
 
 export type CallStatus =
-  | "call.status.preparingCamera"
-  | "call.status.waitingParticipant"
-  | "call.status.joining"
-  | "call.status.connecting"
+  | "call.status.camera.requestingPermissions"
+  | "call.status.camera.initializing"
+  | "call.status.camera.ready"
+  | "call.status.webrtc.connecting"
+  | "call.status.webrtc.waitingParticipant"
   | "call.status.connected"
   | "call.status.ended";
 

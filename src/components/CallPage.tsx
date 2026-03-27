@@ -169,8 +169,11 @@ export default function CallPage() {
     [validRoomId],
   );
   const hasCompletedCallRef = useRef(false);
+  const isCameraInitializationPhase = status.startsWith("call.status.camera.");
   const shouldAutoHideCallControls =
-    hasRemoteParticipant && status !== "call.status.ended";
+    hasRemoteParticipant &&
+    status !== "call.status.ended" &&
+    !isCameraInitializationPhase;
 
   cameraModeRef.current = cameraMode;
   isMutedRef.current = isMuted;
@@ -725,6 +728,16 @@ export default function CallPage() {
   }, [clearShareNotice, shareNotice]);
 
   useEffect(() => {
+    if (!errorMessage) return;
+
+    const timer = window.setTimeout(() => {
+      setErrorMessage(null);
+    }, 2000);
+
+    return () => window.clearTimeout(timer);
+  }, [errorMessage, setErrorMessage]);
+
+  useEffect(() => {
     const onResize = () => {
       setViewportSize({ width: window.innerWidth, height: window.innerHeight });
     };
@@ -873,6 +886,21 @@ export default function CallPage() {
 
     const setup = async () => {
       try {
+        setStatus("call.status.camera.requestingPermissions");
+
+        const cameraStarted = await withCameraInitializationLoader(async () => {
+          setStatus("call.status.camera.initializing");
+          return localMediaController.ensureLocalMediaStarted();
+        });
+
+        if (!isMounted) return;
+        if (!cameraStarted) {
+          setStatus("call.status.camera.requestingPermissions");
+          return;
+        }
+
+        setStatus("call.status.camera.ready");
+
         const iceServers = await resolveIceServers();
         resolvedIceServersRef.current = iceServers;
 
@@ -882,6 +910,15 @@ export default function CallPage() {
         );
         pcRef.current = pc;
 
+        if (localStreamRef.current) {
+          localMediaController.syncLocalTracksToPeerConnection(
+            pc,
+            localStreamRef.current,
+          );
+        }
+
+        setStatus("call.status.webrtc.connecting");
+
         const socket = createSignalingSocket((message) => {
           void onServerMessage(message, validRoomId);
         });
@@ -889,8 +926,7 @@ export default function CallPage() {
         socketRef.current = socket;
 
         socket.addEventListener("open", () => {
-          setErrorMessage(null);
-          setStatus("call.status.waitingParticipant");
+          setStatus("call.status.webrtc.waitingParticipant");
           sendSignal(socket, { type: "join-room", roomId: validRoomId });
         });
 
@@ -905,14 +941,10 @@ export default function CallPage() {
             setStatus("call.status.ended");
           }
         });
-
-        if (!isMounted) return;
-        await withCameraInitializationLoader(() =>
-          localMediaController.ensureLocalMediaStarted(),
-        );
       } catch (error) {
         if (!isMounted) return;
 
+        setStatus("call.status.ended");
         setErrorMessage(t(DEFAULT_ERROR_KEY));
       }
     };
@@ -1010,7 +1042,7 @@ export default function CallPage() {
     const previousStatus = status;
 
     setIsSwitchingCamera(true);
-    setStatus("call.status.connecting");
+    setStatus("call.status.camera.initializing");
 
     const started = await withCameraInitializationLoader(() =>
       localMediaController.startLocalMedia(nextMode),
@@ -1354,7 +1386,7 @@ export default function CallPage() {
         />
 
         <InvitePanel
-          visible={!hasRemoteParticipant}
+          visible={!isCameraInitializationPhase && !hasRemoteParticipant}
           inviteLink={inviteLink}
           shareAriaLabel={t("call.invite.shareAria")}
           shareLabel={t("call.invite.shareCta")}
@@ -1393,7 +1425,7 @@ export default function CallPage() {
           isMuted={isMuted}
           isVideoOff={isVideoOff}
           isCameraInitializing={isCameraInitializing}
-          cameraInitializingLabel={t("call.status.preparingCamera")}
+          cameraInitializingLabel={t("call.status.camera.initializing")}
           onSwitchCamera={async () => {
             markSelfViewInteraction();
             await switchCamera();
@@ -1406,7 +1438,7 @@ export default function CallPage() {
         />
 
         <ViewModeToggle
-          isVisible={areCallControlsVisible}
+          isVisible={!isCameraInitializationPhase && areCallControlsVisible}
           remoteViewMode={remoteViewMode}
           onToggle={() => {
             markCallControlsInteraction();
@@ -1419,7 +1451,7 @@ export default function CallPage() {
         />
 
         <CallControlsPanel
-          isVisible={areCallControlsVisible}
+          isVisible={!isCameraInitializationPhase && areCallControlsVisible}
           isVideoOff={isVideoOff}
           isMuted={isMuted}
           isSwitchingCamera={isSwitchingCamera}

@@ -31,7 +31,7 @@ function callSessionReducer(
         ...state,
         hasRemoteParticipant: false,
         errorMessage: null,
-        status: "call.status.joining",
+        status: "call.status.camera.requestingPermissions",
         connectedAt: null,
         endedAt: null,
       };

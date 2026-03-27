@@ -94,7 +94,7 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
     }
 
     deps.restartAttemptsRef.current += 1;
-    deps.setStatus("call.status.connecting");
+    deps.setStatus("call.status.webrtc.connecting");
 
     try {
       const restartOffer = await pc.createOffer({ iceRestart: true });
@@ -135,7 +135,6 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
       pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
-      deps.setErrorMessage(deps.messages.fallbackNetwork);
     }
 
     pc.ontrack = (event) => {
@@ -163,7 +162,7 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
         deps.setStatus("call.status.connected");
       }
       if (pc.connectionState === "disconnected") {
-        deps.setStatus("call.status.connecting");
+        deps.setStatus("call.status.webrtc.connecting");
         scheduleDisconnectRecovery(room);
       }
       if (pc.connectionState === "failed") {
@@ -195,21 +194,23 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
         deps.isInitiatorRef.current = initiator;
         deps.setIsInitiator(initiator);
         deps.setStatus(
-          initiator ? "call.status.waitingParticipant" : "call.status.joining",
+          initiator
+            ? "call.status.webrtc.waitingParticipant"
+            : "call.status.webrtc.connecting",
         );
         break;
       }
       case "peer-joined": {
         deps.setHasRemoteParticipant(true);
         if (!deps.isInitiatorRef.current) break;
-        deps.setStatus("call.status.connecting");
+        deps.setStatus("call.status.webrtc.connecting");
         await deps.ensureLocalMediaStarted();
         await createAndSendOffer(room);
         break;
       }
       case "offer": {
         deps.setHasRemoteParticipant(true);
-        deps.setStatus("call.status.connecting");
+        deps.setStatus("call.status.webrtc.connecting");
         deps.setErrorMessage(null);
 
         await deps.ensureLocalMediaStarted();

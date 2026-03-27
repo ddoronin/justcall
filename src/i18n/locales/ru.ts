@@ -4,10 +4,12 @@ const ru: Translations = {
   "home.title": "JustCall",
   "home.subtitle": "Простые видеозвонки — в один тап.",
   "home.startCall": "Начать видеозвонок",
-  "call.status.preparingCamera": "Подготовка камеры...",
-  "call.status.waitingParticipant": "Ожидание подключения собеседника",
-  "call.status.joining": "Подключение к звонку...",
-  "call.status.connecting": "Устанавливаем соединение...",
+  "call.status.camera.requestingPermissions":
+    "Ожидание разрешения на камеру...",
+  "call.status.camera.initializing": "Инициализация камеры...",
+  "call.status.camera.ready": "Камера готова",
+  "call.status.webrtc.connecting": "Устанавливаем соединение звонка...",
+  "call.status.webrtc.waitingParticipant": "Ожидание подключения собеседника",
   "call.status.connected": "Звонок подключён",
   "call.status.ended": "Звонок завершён",
   "call.error.default":

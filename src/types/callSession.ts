@@ -19,7 +19,7 @@ export type CallSessionAction =
   | { type: "reset-for-room-join" };
 
 export const initialCallSessionState: CallSessionState = {
-  status: "call.status.preparingCamera",
+  status: "call.status.camera.requestingPermissions",
   errorMessage: null,
   hasRemoteParticipant: false,
   isInitiator: false,

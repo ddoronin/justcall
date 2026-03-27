@@ -139,9 +139,6 @@ export function createLocalMediaController(deps: LocalMediaControllerDeps) {
   async function startLocalMedia(
     mode: CameraMode = deps.getCameraMode(),
   ): Promise<boolean> {
-    const pc = deps.pcRef.current;
-    if (!pc) return false;
-
     try {
       const stream = await attachLocalMedia(mode);
       const previousStream = deps.localStreamRef.current;
@@ -152,7 +149,11 @@ export function createLocalMediaController(deps: LocalMediaControllerDeps) {
       deps.setErrorMessage(null);
 
       syncLocalVideoElementWithStream(stream);
-      syncLocalTracksToPeerConnection(pc, stream);
+
+      const pc = deps.pcRef.current;
+      if (pc) {
+        syncLocalTracksToPeerConnection(pc, stream);
+      }
 
       if (previousStream && previousStream.id !== stream.id) {
         stopStream(previousStream);

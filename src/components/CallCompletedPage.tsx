@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PhoneOff, Video } from "lucide-react";
+import { Phone, Video } from "lucide-react";
 import { useI18n } from "../i18n/provider";
 
 type CompletedLocationState = {
@@ -48,7 +48,10 @@ export default function CallCompletedPage() {
     <main className="grid min-h-dvh place-items-center p-6 max-[760px]:p-4">
       <div className="glass w-full max-w-[480px] rounded-[24px] p-7 text-center max-[760px]:rounded-[20px] max-[760px]:p-[22px]">
         <div className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#ef444430] text-[#fecaca]">
-          <PhoneOff className="h-6 w-6" aria-hidden="true" />
+          <Phone
+            className="h-[18px] w-[18px] shrink-0 rotate-[130deg]"
+            aria-hidden="true"
+          />
         </div>
 
         <h1 className="mb-2 text-[30px] tracking-[0.2px] max-[760px]:text-[26px]">
