@@ -25,3 +25,10 @@ coverage/
 # editor folders
 .vscode/
 .idea/
+
+*storybook.log
+storybook-static
+
+# Storybook init scaffold (unused)
+src/stories/
+vitest.shims.d.ts

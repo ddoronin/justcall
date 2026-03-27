@@ -2,7 +2,7 @@
 
 **Reliable international video calling — no apps, no accounts, no hassle.**
 
-[**www.just-call.app**](https://just-call.app)
+[**just-call.app**](https://just-call.app)
 
 ## The problem
 
@@ -40,3 +40,43 @@ Most video call solutions struggle when participants are in different countries 
 JustCall is free and always will be. If it's saved you from a frustrating call or helped you stay connected with someone far away, you can buying me a coffee. Every cup fuels another bug fix or feature.
 
 <a href="https://www.buymeacoffee.com/2UFtu3X" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
+
+## Storybook
+
+This project includes Storybook for isolated UI development of app pages and call components.
+
+- Start Storybook:
+
+  ```bash
+  npm run storybook
+  ```
+
+- Build static Storybook:
+
+  ```bash
+  npm run build-storybook
+  ```
+
+Stories are located in:
+
+- `src/App.stories.tsx`
+- `src/components/**/*.stories.tsx`
+
+Storybook configuration is in:
+
+- `.storybook/main.ts`
+- `.storybook/preview.ts`
+
+### Storybook troubleshooting (macOS)
+
+- If Storybook shows an AppleScript/Chrome timeout (`AppleEvent timed out (-1712)`), run it with `--ci` to skip auto-open:
+
+  ```bash
+  npm run storybook -- --ci
+  ```
+
+- For a quick startup verification without opening the browser:
+
+  ```bash
+  npm run storybook -- --smoke-test --ci
+  ```
