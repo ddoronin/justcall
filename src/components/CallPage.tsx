@@ -27,7 +27,6 @@ import CallStatusOverlay from "./call/CallStatusOverlay";
 import InvitePanel from "./call/InvitePanel";
 import ViewModeToggle from "./call/ViewModeToggle";
 import CallControlsPanel from "./call/CallControlsPanel";
-import InviteShareModal from "./call/InviteShareModal";
 import { useCallSessionState } from "./call/useCallSessionState";
 import { useI18n } from "../i18n/provider";
 import type { TranslationKey } from "../i18n/types";
@@ -57,7 +56,6 @@ export default function CallPage() {
   const cameraInitRequestsRef = useRef(0);
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const isInitiatorRef = useRef(false);
-  const hasAutoOpenedInviteRef = useRef(false);
   const disconnectTimerRef = useRef<number | null>(null);
   const restartAttemptsRef = useRef(0);
   const pinchStartDistanceRef = useRef<number | null>(null);
@@ -109,7 +107,6 @@ export default function CallPage() {
   const isVideoOffRef = useRef(isVideoOff);
   const connectedAtRef = useRef<number | null>(null);
   const {
-    showInviteModal,
     shareNotice,
     remoteViewMode,
     remoteZoomScale,
@@ -118,7 +115,6 @@ export default function CallPage() {
     remotePanOffset,
   } = useCallUiStore(
     useShallow((state) => ({
-      showInviteModal: state.showInviteModal,
       shareNotice: state.shareNotice,
       remoteViewMode: state.remoteViewMode,
       remoteZoomScale: state.remoteZoomScale,
@@ -128,7 +124,6 @@ export default function CallPage() {
     })),
   );
   const {
-    setShowInviteModal,
     setShareNotice,
     clearShareNotice,
     setRemoteZoomScale,
@@ -139,7 +134,6 @@ export default function CallPage() {
     toggleRemoteViewMode,
   } = useCallUiStore(
     useShallow((state) => ({
-      setShowInviteModal: state.setShowInviteModal,
       setShareNotice: state.setShareNotice,
       clearShareNotice: state.clearShareNotice,
       setRemoteZoomScale: state.setRemoteZoomScale,
@@ -176,7 +170,7 @@ export default function CallPage() {
   );
   const hasCompletedCallRef = useRef(false);
   const shouldAutoHideCallControls =
-    hasRemoteParticipant && status !== "call.status.ended" && !showInviteModal;
+    hasRemoteParticipant && status !== "call.status.ended";
 
   cameraModeRef.current = cameraMode;
   isMutedRef.current = isMuted;
@@ -687,7 +681,6 @@ export default function CallPage() {
         localStreamRef,
         queuedCandidatesRef,
         isInitiatorRef,
-        hasAutoOpenedInviteRef,
         disconnectTimerRef,
         restartAttemptsRef,
         remoteVideoRef,
@@ -703,7 +696,6 @@ export default function CallPage() {
         setErrorMessage,
         setIsInitiator,
         setHasRemoteParticipant,
-        setShowInviteModal,
         resetRemoteTransform,
         ensureLocalMediaStarted: () =>
           localMediaController.ensureLocalMediaStarted(),
@@ -717,7 +709,6 @@ export default function CallPage() {
       setErrorMessage,
       setHasRemoteParticipant,
       setIsInitiator,
-      setShowInviteModal,
       setStatus,
       t,
     ],
@@ -846,11 +837,6 @@ export default function CallPage() {
     errorMessage,
     shareNotice,
   ]);
-
-  useEffect(() => {
-    if (!hasRemoteParticipant) return;
-    setShowInviteModal(false);
-  }, [hasRemoteParticipant]);
 
   useEffect(() => {
     if (status !== "call.status.connected") return;
@@ -1470,18 +1456,6 @@ export default function CallPage() {
           }}
         />
       </section>
-
-      <InviteShareModal
-        open={showInviteModal && !hasRemoteParticipant}
-        inviteLink={inviteLink}
-        title={t("call.modal.title")}
-        subtitle={t("call.modal.subtitle")}
-        copyButtonLabel={t("call.modal.copyButton")}
-        shareButtonLabel={t("call.modal.shareButton")}
-        onClose={() => setShowInviteModal(false)}
-        onCopy={() => void copyInviteLink()}
-        onShare={() => void shareInviteLink()}
-      />
     </main>
   );
 }

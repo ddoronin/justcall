@@ -63,11 +63,6 @@ const ru: Translations = {
   "call.selfView.collapseAria": "Свернуть свое видео",
   "call.selfView.hideAria": "Скрыть свое видео",
   "call.selfView.showAria": "Показать свое видео",
-  "call.modal.title": "Поделиться звонком",
-  "call.modal.subtitle":
-    "Отправьте эту ссылку, чтобы собеседник сразу подключился.",
-  "call.modal.copyButton": "Скопировать",
-  "call.modal.shareButton": "Поделиться",
   "call.completed.message": "Видеозвонок завершён.",
   "call.completed.durationLabel": "Длительность звонка",
   "call.completed.goHome": "На главную",

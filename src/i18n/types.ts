@@ -51,10 +51,6 @@ export type TranslationKey =
   | "call.selfView.collapseAria"
   | "call.selfView.hideAria"
   | "call.selfView.showAria"
-  | "call.modal.title"
-  | "call.modal.subtitle"
-  | "call.modal.copyButton"
-  | "call.modal.shareButton"
   | "call.completed.message"
   | "call.completed.durationLabel"
   | "call.completed.goHome";

@@ -5,14 +5,12 @@ export type RemoteViewMode = "fill" | "fit";
 type Point = { x: number; y: number };
 
 type CallUiState = {
-  showInviteModal: boolean;
   shareNotice: string | null;
   remoteViewMode: RemoteViewMode;
   remoteZoomScale: number;
   isPinchingRemote: boolean;
   isPanningRemote: boolean;
   remotePanOffset: Point;
-  setShowInviteModal: (open: boolean) => void;
   setShareNotice: (notice: string | null) => void;
   clearShareNotice: () => void;
   toggleRemoteViewMode: () => void;
@@ -24,14 +22,12 @@ type CallUiState = {
 };
 
 export const useCallUiStore = create<CallUiState>((set) => ({
-  showInviteModal: false,
   shareNotice: null,
   remoteViewMode: "fit",
   remoteZoomScale: 1,
   isPinchingRemote: false,
   isPanningRemote: false,
   remotePanOffset: { x: 0, y: 0 },
-  setShowInviteModal: (open) => set({ showInviteModal: open }),
   setShareNotice: (notice) => set({ shareNotice: notice }),
   clearShareNotice: () => set({ shareNotice: null }),
   toggleRemoteViewMode: () =>

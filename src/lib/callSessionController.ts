@@ -17,7 +17,6 @@ type CallSessionControllerDeps = {
   localStreamRef: MutableRefObject<MediaStream | null>;
   queuedCandidatesRef: MutableRefObject<RTCIceCandidateInit[]>;
   isInitiatorRef: MutableRefObject<boolean>;
-  hasAutoOpenedInviteRef: MutableRefObject<boolean>;
   disconnectTimerRef: MutableRefObject<number | null>;
   restartAttemptsRef: MutableRefObject<number>;
   remoteVideoRef: MutableRefObject<HTMLVideoElement | null>;
@@ -27,7 +26,6 @@ type CallSessionControllerDeps = {
   setErrorMessage: (errorMessage: string | null) => void;
   setIsInitiator: (isInitiator: boolean) => void;
   setHasRemoteParticipant: (hasRemoteParticipant: boolean) => void;
-  setShowInviteModal: (open: boolean) => void;
   resetRemoteTransform: () => void;
   ensureLocalMediaStarted: () => Promise<boolean>;
   syncLocalTracksToPeerConnection: (
@@ -199,10 +197,6 @@ export function createCallSessionController(deps: CallSessionControllerDeps) {
         deps.setStatus(
           initiator ? "call.status.waitingParticipant" : "call.status.joining",
         );
-        if (initiator && !deps.hasAutoOpenedInviteRef.current) {
-          deps.hasAutoOpenedInviteRef.current = true;
-          deps.setShowInviteModal(true);
-        }
         break;
       }
       case "peer-joined": {
