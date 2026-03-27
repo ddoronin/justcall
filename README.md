@@ -2,7 +2,7 @@
 
 **Reliable international video calling — no apps, no accounts, no hassle.**
 
-[**https://justcall-fvbw.onrender.com**](https://justcall-fvbw.onrender.com)
+[**www.just-call.app**](https://just-call.app)
 
 ## The problem
 
