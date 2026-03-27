@@ -46,7 +46,7 @@ export default function CallControlsPanel({
   labels,
 }: CallControlsPanelProps) {
   const baseButtonClassName =
-    "btn-interactive glass inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] font-semibold min-h-[44px] max-[760px]:min-h-12 max-[760px]:gap-0 max-[760px]:p-[11px]";
+    "btn-interactive glass inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] min-h-[44px] max-[760px]:min-h-12 max-[760px]:gap-0 max-[760px]:p-[11px]";
 
   return (
     <div
@@ -113,7 +113,7 @@ export default function CallControlsPanel({
       <button
         className={clsx(
           baseButtonClassName,
-          "font-bold text-white border-[#ff9f9f66] bg-[linear-gradient(145deg,#ed5b5b8f,#c9363685)]",
+          "text-white border-[#ff9f9f66] bg-[linear-gradient(145deg,#ed5b5b8f,#c9363685)]",
         )}
         onClick={onEndCall}
         aria-label={labels.endAria}

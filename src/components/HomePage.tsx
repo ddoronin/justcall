@@ -43,7 +43,7 @@ export default function HomePage() {
         </h1>
         <p className="m-0 whitespace-nowrap">{t("home.subtitle")}</p>
         <button
-          className="btn-interactive mt-[18px] inline-flex min-h-[52px] w-full items-center justify-center gap-[10px] rounded-[14px] border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 font-bold text-white"
+          className="btn-interactive mt-[18px] inline-flex min-h-[52px] w-full items-center justify-center gap-[10px] rounded-[14px] border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 text-white"
           onClick={startCall}
         >
           <Video className="h-5 w-5" aria-hidden="true" />

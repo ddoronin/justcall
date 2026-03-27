@@ -29,7 +29,7 @@ export default function InvitePanel({
     >
       <div className="glass grid w-[min(560px,94vw)] gap-3 rounded-[20px] p-3.5 max-[760px]:w-full max-[760px]:gap-2.5 max-[760px]:rounded-[18px] max-[760px]:p-3">
         <button
-          className="btn-interactive glass inline-flex min-h-[58px] w-full items-center justify-center gap-[10px] rounded-2xl border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 text-[21px] font-extrabold text-white shadow-[0_12px_28px_#10964173,inset_0_1px_0_#b6ffd66e] max-[760px]:min-h-[54px] max-[760px]:text-[19px]"
+          className="btn-interactive glass inline-flex min-h-[58px] w-full items-center justify-center gap-[10px] rounded-2xl border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 text-[21px] text-white shadow-[0_12px_28px_#10964173,inset_0_1px_0_#b6ffd66e] max-[760px]:min-h-[54px] max-[760px]:text-[19px]"
           onClick={onShare}
           aria-label={shareAriaLabel}
         >

@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #f5f7ff;
   background: radial-gradient(circle at top, #1f3f35 0%, #0f131f 55%, #090b12 100%);
 }
