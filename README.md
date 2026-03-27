@@ -4,6 +4,10 @@
 
 [**just-call.app**](https://just-call.app)
 
+If the website is not opening use this link:
+
+[**justcall-fvbw.onrender.com**](https://justcall-fvbw.onrender.com)
+
 ## The problem
 
 Calling someone in another country over video shouldn't be complicated — but it often is. Apps require downloads. Services demand sign-ups. Connections drop behind firewalls and restrictive networks. You just want to talk to someone, and the tooling gets in the way.
