@@ -502,6 +502,25 @@ export default function CallPage() {
     primeCallControlsHideTimer();
   }
 
+  function toggleCallControlsFromStageClick() {
+    if (!shouldAutoHideCallControls) {
+      setAreCallControlsVisible(true);
+      return;
+    }
+
+    setAreCallControlsVisible((visible) => {
+      const nextVisible = !visible;
+
+      if (nextVisible) {
+        primeCallControlsHideTimer();
+      } else {
+        clearCallControlsHideTimer();
+      }
+
+      return nextVisible;
+    });
+  }
+
   function collapseSelfViewExpanded() {
     setIsSelfViewExpanded((expanded) => {
       if (!expanded) return expanded;
@@ -786,14 +805,10 @@ export default function CallPage() {
       if (!isSelfViewHidden) {
         markSelfViewInteraction();
       }
-
-      markCallControlsInteraction();
     };
 
-    window.addEventListener("pointerdown", markInteraction);
     window.addEventListener("keydown", markInteraction);
     return () => {
-      window.removeEventListener("pointerdown", markInteraction);
       window.removeEventListener("keydown", markInteraction);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1026,8 +1041,6 @@ export default function CallPage() {
   }
 
   function handleRemoteTouchStart(event: TouchEvent<HTMLDivElement>) {
-    markCallControlsInteraction();
-
     if (event.touches.length === 2) {
       pinchStartDistanceRef.current = getTouchDistance(event.touches);
       pinchStartScaleRef.current = remoteZoomScale;
@@ -1085,8 +1098,6 @@ export default function CallPage() {
   }
 
   function handleRemoteTouchEnd(event: TouchEvent<HTMLDivElement>) {
-    markCallControlsInteraction();
-
     if (event.touches.length >= 2) return;
 
     if (event.touches.length === 1 && remoteZoomScale > 1) {
@@ -1336,6 +1347,7 @@ export default function CallPage() {
         <RemoteVideoStage
           remoteGestureLayerRef={remoteGestureLayerRef}
           remoteVideoRef={remoteVideoRef}
+          onStageClick={toggleCallControlsFromStageClick}
           onTouchStart={handleRemoteTouchStart}
           onTouchMove={handleRemoteTouchMove}
           onTouchEnd={handleRemoteTouchEnd}

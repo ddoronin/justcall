@@ -1,10 +1,15 @@
-import type { MutableRefObject, TouchEventHandler } from "react";
+import type {
+  MouseEventHandler,
+  MutableRefObject,
+  TouchEventHandler,
+} from "react";
 import clsx from "clsx";
 import type { RemoteViewMode } from "../../store/callUiStore";
 
 type RemoteVideoStageProps = {
   remoteGestureLayerRef: MutableRefObject<HTMLDivElement | null>;
   remoteVideoRef: MutableRefObject<HTMLVideoElement | null>;
+  onStageClick: MouseEventHandler<HTMLDivElement>;
   onTouchStart: TouchEventHandler<HTMLDivElement>;
   onTouchMove: TouchEventHandler<HTMLDivElement>;
   onTouchEnd: TouchEventHandler<HTMLDivElement>;
@@ -18,6 +23,7 @@ type RemoteVideoStageProps = {
 export default function RemoteVideoStage({
   remoteGestureLayerRef,
   remoteVideoRef,
+  onStageClick,
   onTouchStart,
   onTouchMove,
   onTouchEnd,
@@ -31,6 +37,7 @@ export default function RemoteVideoStage({
     <div
       className="h-dvh w-full touch-none overflow-hidden"
       ref={remoteGestureLayerRef}
+      onClick={onStageClick}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}

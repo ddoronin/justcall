@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PhoneOff } from "lucide-react";
+import { PhoneOff, Video } from "lucide-react";
 import { useI18n } from "../i18n/provider";
 
 type CompletedLocationState = {
@@ -30,6 +30,11 @@ export default function CallCompletedPage() {
   const location = useLocation();
   const state = location.state as CompletedLocationState | null;
 
+  const startCall = () => {
+    const roomId = crypto.randomUUID();
+    navigate(`/call/${roomId}`);
+  };
+
   const duration = useMemo(() => {
     const durationMs = state?.durationMs;
     if (typeof durationMs !== "number" || Number.isNaN(durationMs)) {
@@ -56,9 +61,10 @@ export default function CallCompletedPage() {
 
         <button
           className="btn-interactive inline-flex min-h-[50px] w-full items-center justify-center rounded-[14px] border-0 bg-[linear-gradient(140deg,#35d069,#16a34a)] px-4 py-3 font-bold text-white"
-          onClick={() => navigate("/")}
+          onClick={startCall}
         >
-          {t("call.completed.goHome")}
+          <Video className="mr-2 h-5 w-5" aria-hidden="true" />
+          Start Video Call
         </button>
       </div>
     </main>
