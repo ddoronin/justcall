@@ -66,6 +66,7 @@ export default function CallPage() {
   const panStartOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const selfViewIdleTimerRef = useRef<number | null>(null);
   const selfViewExpandedTimerRef = useRef<number | null>(null);
+  const callControlsHideTimerRef = useRef<number | null>(null);
   const selfViewDragRef = useRef<{
     pointerId: number;
     pointerType: string;
@@ -106,6 +107,7 @@ export default function CallPage() {
   const cameraModeRef = useRef<CameraMode>(cameraMode);
   const isMutedRef = useRef(isMuted);
   const isVideoOffRef = useRef(isVideoOff);
+  const connectedAtRef = useRef<number | null>(null);
   const {
     showInviteModal,
     shareNotice,
@@ -163,6 +165,7 @@ export default function CallPage() {
   const [isSelfViewExpanded, setIsSelfViewExpanded] = useState(false);
   const [isSelfViewHidden, setIsSelfViewHidden] = useState(false);
   const [isSelfViewIdle, setIsSelfViewIdle] = useState(false);
+  const [areCallControlsVisible, setAreCallControlsVisible] = useState(true);
 
   const validRoomId = roomId ?? "";
   const isMobileViewport = viewportSize.width <= 760;
@@ -172,10 +175,13 @@ export default function CallPage() {
     [validRoomId],
   );
   const hasCompletedCallRef = useRef(false);
+  const shouldAutoHideCallControls =
+    hasRemoteParticipant && status !== "call.status.ended" && !showInviteModal;
 
   cameraModeRef.current = cameraMode;
   isMutedRef.current = isMuted;
   isVideoOffRef.current = isVideoOff;
+  connectedAtRef.current = connectedAt;
 
   function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
@@ -461,6 +467,41 @@ export default function CallPage() {
     }
   }
 
+  function clearCallControlsHideTimer() {
+    if (callControlsHideTimerRef.current !== null) {
+      window.clearTimeout(callControlsHideTimerRef.current);
+      callControlsHideTimerRef.current = null;
+    }
+  }
+
+  function primeCallControlsHideTimer() {
+    clearCallControlsHideTimer();
+
+    if (!shouldAutoHideCallControls) {
+      setAreCallControlsVisible(true);
+      return;
+    }
+
+    callControlsHideTimerRef.current = window.setTimeout(() => {
+      if (isPinchingRemote || isPanningRemote || selfViewDragRef.current) {
+        primeCallControlsHideTimer();
+        return;
+      }
+
+      setAreCallControlsVisible(false);
+    }, 2400);
+  }
+
+  function markCallControlsInteraction() {
+    if (!shouldAutoHideCallControls) {
+      setAreCallControlsVisible(true);
+      return;
+    }
+
+    setAreCallControlsVisible(true);
+    primeCallControlsHideTimer();
+  }
+
   function collapseSelfViewExpanded() {
     setIsSelfViewExpanded((expanded) => {
       if (!expanded) return expanded;
@@ -496,6 +537,7 @@ export default function CallPage() {
   function markSelfViewInteraction() {
     setIsSelfViewIdle(false);
     primeSelfViewIdleTimer();
+    markCallControlsInteraction();
 
     if (isSelfViewExpanded && !isSelfViewHidden) {
       primeSelfViewExpandedTimer();
@@ -687,9 +729,26 @@ export default function CallPage() {
     return () => {
       clearSelfViewIdleTimer();
       clearSelfViewExpandedTimer();
+      clearCallControlsHideTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!shouldAutoHideCallControls) {
+      clearCallControlsHideTimer();
+      setAreCallControlsVisible(true);
+      return;
+    }
+
+    setAreCallControlsVisible(false);
+    primeCallControlsHideTimer();
+
+    return () => {
+      clearCallControlsHideTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoHideCallControls]);
 
   useEffect(() => {
     if (!isSelfViewExpanded || isSelfViewHidden) {
@@ -727,6 +786,8 @@ export default function CallPage() {
       if (!isSelfViewHidden) {
         markSelfViewInteraction();
       }
+
+      markCallControlsInteraction();
     };
 
     window.addEventListener("pointerdown", markInteraction);
@@ -779,7 +840,9 @@ export default function CallPage() {
   useEffect(() => {
     if (status !== "call.status.connected") return;
     if (connectedAt !== null) return;
-    setConnectedAt(Date.now());
+    const timestamp = Date.now();
+    connectedAtRef.current = timestamp;
+    setConnectedAt(timestamp);
   }, [connectedAt, setConnectedAt, status]);
 
   useEffect(() => {
@@ -871,8 +934,8 @@ export default function CallPage() {
   }
 
   function getCurrentCallDurationMs(endedTimestamp: number): number {
-    if (connectedAt === null) return 0;
-    return Math.max(0, endedTimestamp - connectedAt);
+    if (connectedAtRef.current === null) return 0;
+    return Math.max(0, endedTimestamp - connectedAtRef.current);
   }
 
   function completeCallForAllParticipants() {
@@ -963,6 +1026,8 @@ export default function CallPage() {
   }
 
   function handleRemoteTouchStart(event: TouchEvent<HTMLDivElement>) {
+    markCallControlsInteraction();
+
     if (event.touches.length === 2) {
       pinchStartDistanceRef.current = getTouchDistance(event.touches);
       pinchStartScaleRef.current = remoteZoomScale;
@@ -1020,6 +1085,8 @@ export default function CallPage() {
   }
 
   function handleRemoteTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    markCallControlsInteraction();
+
     if (event.touches.length >= 2) return;
 
     if (event.touches.length === 1 && remoteZoomScale > 1) {
@@ -1067,6 +1134,7 @@ export default function CallPage() {
 
     clearSelfViewIdleTimer();
     clearSelfViewExpandedTimer();
+    clearCallControlsHideTimer();
   }
 
   function toggleSelfViewExpanded() {
@@ -1279,6 +1347,9 @@ export default function CallPage() {
         />
 
         <CallStatusOverlay
+          isStatusVisible={
+            areCallControlsVisible || !shouldAutoHideCallControls
+          }
           statusLabel={t(status)}
           errorMessage={errorMessage}
           shareNotice={shareNotice}
@@ -1337,8 +1408,12 @@ export default function CallPage() {
         />
 
         <ViewModeToggle
+          isVisible={areCallControlsVisible}
           remoteViewMode={remoteViewMode}
-          onToggle={toggleRemoteViewMode}
+          onToggle={() => {
+            markCallControlsInteraction();
+            toggleRemoteViewMode();
+          }}
           fitAriaLabel={t("call.view.fitAria")}
           fillAriaLabel={t("call.view.fillAria")}
           fitLabel={t("call.view.fitLabel")}
@@ -1346,13 +1421,26 @@ export default function CallPage() {
         />
 
         <CallControlsPanel
+          isVisible={areCallControlsVisible}
           isVideoOff={isVideoOff}
           isMuted={isMuted}
           isSwitchingCamera={isSwitchingCamera}
-          onToggleVideo={() => void toggleVideo()}
-          onToggleMute={() => void toggleMute()}
-          onSwitchCamera={() => void switchCamera()}
-          onEndCall={endCall}
+          onToggleVideo={() => {
+            markCallControlsInteraction();
+            void toggleVideo();
+          }}
+          onToggleMute={() => {
+            markCallControlsInteraction();
+            void toggleMute();
+          }}
+          onSwitchCamera={() => {
+            markCallControlsInteraction();
+            void switchCamera();
+          }}
+          onEndCall={() => {
+            markCallControlsInteraction();
+            endCall();
+          }}
           labels={{
             videoOnAria: t("call.controls.videoOnAria"),
             videoOffAria: t("call.controls.videoOffAria"),

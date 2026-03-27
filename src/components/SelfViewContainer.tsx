@@ -96,7 +96,7 @@ export default function SelfViewContainer({
         isSelfViewExpanded && "z-[12]",
         isDraggingSelfView &&
           "cursor-grabbing shadow-[0_14px_30px_#04050b76] transition-none",
-        isSelfViewIdle && "scale-95 opacity-70",
+        isSelfViewIdle && "scale-95",
       )}
       style={{
         aspectRatio: `${localAspectRatio}`,

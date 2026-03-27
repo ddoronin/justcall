@@ -1,17 +1,29 @@
+import clsx from "clsx";
+
 type CallStatusOverlayProps = {
+  isStatusVisible: boolean;
   statusLabel: string;
   errorMessage: string | null;
   shareNotice: string | null;
 };
 
 export default function CallStatusOverlay({
+  isStatusVisible,
   statusLabel,
   errorMessage,
   shareNotice,
 }: CallStatusOverlayProps) {
   return (
     <>
-      <div className="absolute left-3 top-[max(12px,env(safe-area-inset-top))] z-[4] flex items-center gap-3">
+      <div
+        className={clsx(
+          "absolute left-3 top-[max(12px,env(safe-area-inset-top))] z-[4] flex items-center gap-3 transition-all duration-300 ease-out",
+          isStatusVisible
+            ? "opacity-100 translate-y-0"
+            : "pointer-events-none opacity-0 -translate-y-4",
+        )}
+        aria-hidden={!isStatusVisible}
+      >
         <div className="glass max-w-[min(68vw,420px)] truncate rounded-full px-4 py-[10px] text-sm text-[#edf2ff]">
           {statusLabel}
         </div>

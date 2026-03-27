@@ -26,7 +26,7 @@ type CallUiState = {
 export const useCallUiStore = create<CallUiState>((set) => ({
   showInviteModal: false,
   shareNotice: null,
-  remoteViewMode: "fill",
+  remoteViewMode: "fit",
   remoteZoomScale: 1,
   isPinchingRemote: false,
   isPanningRemote: false,

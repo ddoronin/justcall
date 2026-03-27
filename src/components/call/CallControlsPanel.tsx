@@ -9,6 +9,7 @@ import {
 import clsx from "clsx";
 
 type CallControlsPanelProps = {
+  isVisible: boolean;
   isVideoOff: boolean;
   isMuted: boolean;
   isSwitchingCamera: boolean;
@@ -34,6 +35,7 @@ type CallControlsPanelProps = {
 };
 
 export default function CallControlsPanel({
+  isVisible,
   isVideoOff,
   isMuted,
   isSwitchingCamera,
@@ -47,7 +49,15 @@ export default function CallControlsPanel({
     "btn-interactive glass inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] font-semibold min-h-[44px] max-[760px]:min-h-12 max-[760px]:gap-0 max-[760px]:p-[11px]";
 
   return (
-    <div className="glass absolute right-3.5 top-1/2 z-[6] grid w-[min(190px,28vw)] -translate-y-1/2 gap-2.5 rounded-[18px] p-2.5 max-[760px]:left-3 max-[760px]:right-3 max-[760px]:top-auto max-[760px]:w-auto max-[760px]:translate-y-0 max-[760px]:grid-cols-4 max-[760px]:gap-2.5 max-[760px]:bottom-[max(12px,env(safe-area-inset-bottom))]">
+    <div
+      className={clsx(
+        "glass absolute right-3.5 top-1/2 z-[6] grid w-[min(190px,28vw)] -translate-y-1/2 gap-2.5 rounded-[18px] p-2.5 transition-all duration-300 ease-out max-[760px]:left-3 max-[760px]:right-3 max-[760px]:top-auto max-[760px]:w-auto max-[760px]:translate-y-0 max-[760px]:grid-cols-4 max-[760px]:gap-2.5 max-[760px]:bottom-[max(12px,env(safe-area-inset-bottom))]",
+        isVisible
+          ? "opacity-100 translate-x-0 max-[760px]:translate-y-0"
+          : "pointer-events-none opacity-0 translate-x-8 max-[760px]:translate-x-0 max-[760px]:translate-y-8",
+      )}
+      aria-hidden={!isVisible}
+    >
       <button
         className={clsx(
           baseButtonClassName,
