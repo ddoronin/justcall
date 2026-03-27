@@ -64,7 +64,7 @@ export default function CallCompletedPage() {
           onClick={startCall}
         >
           <Video className="mr-2 h-5 w-5" aria-hidden="true" />
-          Start Video Call
+          {t("home.startCall")}
         </button>
       </div>
     </main>
